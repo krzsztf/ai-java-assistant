@@ -6,6 +6,14 @@
             [org.httpkit.client :as http])
   (:import [java.io File]))
 
+(def ^:private java-std-packages
+  #{"java." "javax." "sun." "com.sun."})
+
+(defn- std-lib-class?
+  "Check if a class is from Java standard library"
+  [class-name]
+  (some #(str/starts-with? class-name %) java-std-packages))
+
 (def ^:private claude-cost-per-1k-input-tokens 0.015)
 (def ^:private claude-cost-per-1k-output-tokens 0.075)
 
@@ -82,8 +90,8 @@
   (let [classes (set (map :class parsed-files))
         _ (println "Found" (count classes) "unique classes")
         deps-map (reduce (fn [acc {:keys [class imports]}]
-                          (let [filtered-imports (set (filter #(str/starts-with? % (first (str/split class #"\."))) imports))]
-                            (println "Class" class "depends on" (count imports) "classes")
+                          (let [filtered-imports (set (remove std-lib-class? imports))]
+                            (println "Class" class "depends on" (count filtered-imports) "project classes")
                             (assoc acc class imports)))
                         {}
                         parsed-files)

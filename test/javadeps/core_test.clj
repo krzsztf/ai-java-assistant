@@ -3,6 +3,11 @@
             [javadeps.core :as core]
             [clojure.java.io :as io]))
 
+(deftest std-lib-class?-test
+  (is (true? (core/std-lib-class? "java.util.List")))
+  (is (true? (core/std-lib-class? "javax.swing.JFrame")))
+  (is (false? (core/std-lib-class? "com.example.Test"))))
+
 (deftest parse-java-file-basic-test
   (let [temp-file (java.io.File/createTempFile "Test" ".java")]
     (try
