@@ -9,6 +9,11 @@
 (def ^:private java-std-packages
   #{"java." "javax." "sun." "com.sun." "lombok." "com.fasterxml.jackson."})
 
+(defn- std-lib-class?
+  "Check if a class is from Java standard library"
+  [class-name]
+  (some #(str/starts-with? class-name %) java-std-packages))
+
 (defn- external-class?
   "Check if a class is external to project"
   [class-name project-package]
@@ -68,7 +73,7 @@
   [["-d" "--dir DIR" "Directory to scan" :validate
     [#(try (let [f (io/file %)] (and (.exists f) (.isDirectory f)))
            (catch Exception _ false)) "Must be a valid, accessible directory"]]
-   ["-p" "--package PKG" "Project package prefix (e.g. com.example)" :default ""]]
+   ["-p" "--package PKG" "Project package prefix (e.g. com.example)" :default ""]
    ["-a" "--analyze" "Submit dependency graph for AI analysis"]
    ["-l" "--llm MODEL" "LLM to use for analysis (anthropic or ollama)" :default
     "anthropic" :validate
@@ -122,11 +127,10 @@
 
 (defn build-dependency-graph
   "Build dependency graph from parsed Java files"
-  [parsed-files]
+  [parsed-files project-pkg]
   (println "\nBuilding dependency map...")
   (let [classes (set (map :class parsed-files))
         _ (println "Found" (count classes) "unique classes")
-        project-pkg (:package options)
         deps-map (reduce (fn [acc {:keys [class imports]}]
                            (let [filtered-imports (set (remove #(external-class? % project-pkg)
                                                          imports))]
@@ -249,7 +253,7 @@ Dependency graph:
                   _ (println "Successfully parsed"
                              (count parsed-files)
                              "files. Building graph...")
-                  graph-data (build-dependency-graph parsed-files)
+                  graph-data (build-dependency-graph parsed-files (:package options))
                   dep-graph (if (:reverse-deps options)
                              graph-data
                              (dissoc graph-data :reverse-dependencies))
