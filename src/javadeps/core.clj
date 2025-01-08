@@ -65,10 +65,13 @@
 (defn build-dependency-graph
   "Build dependency graph from parsed Java files"
   [parsed-files]
+  (println "\nBuilding dependency map...")
   (let [class-map (into {} (map (juxt :class identity) parsed-files))
+        _ (println "Found" (count class-map) "unique classes")
         deps-map (reduce (fn [acc {:keys [class imports]}]
-                          (assoc acc class
-                                 (set (filter #(get class-map %) imports))))
+                          (let [filtered-imports (set (filter #(get class-map %) imports))]
+                            (println "Class" class "depends on" (count filtered-imports) "classes")
+                            (assoc acc class filtered-imports)))
                         {}
                         parsed-files)
         reverse-deps (reduce (fn [acc [class deps]]
@@ -84,6 +87,7 @@
 (defn print-dependencies
   "Print dependency information for all classes"
   [{:keys [dependencies reverse-dependencies]}]
+  (println "\nAnalyzing" (count dependencies) "classes for dependencies...")
   (doseq [class (sort (keys dependencies))]
     (println "\nClass:" class)
     (when-let [deps (seq (get dependencies class))]
