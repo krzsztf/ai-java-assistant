@@ -14,6 +14,20 @@
   [class-name]
   (some #(str/starts-with? class-name %) java-std-packages))
 
+(defn- get-package-name
+  "Extract package name from fully qualified class name"
+  [class-name]
+  (str/join "." (butlast (str/split class-name #"\."))))
+
+(defn- group-external-deps
+  "Group external dependencies by package"
+  [deps]
+  (->> deps
+       (remove std-lib-class?)
+       (group-by get-package-name)
+       (map first)
+       sort))
+
 (def ^:private llm-configs
   {:anthropic {:cost-per-1k-input-tokens 0.015,
                :cost-per-1k-output-tokens 0.075,
@@ -194,10 +208,23 @@
   (let [all-classes (sort (keys dependencies))]
     (doseq [class all-classes]
       (println "\nClass:" class)
-      (if-let [deps (seq (remove std-lib-class? (get dependencies class)))]
-        (do (println "  Dependencies:")
-            (doseq [dep (sort deps)] (println "    →" dep)))
-        (println "  Dependencies: none"))
+      (let [all-deps (get dependencies class)
+            project-deps (filter #(some #{(get-package-name %)} 
+                                      (map get-package-name (keys dependencies))) 
+                               all-deps)
+            external-deps (group-external-deps all-deps)]
+        (if (seq project-deps)
+          (do 
+            (println "  Project Dependencies:")
+            (doseq [dep (sort project-deps)]
+              (println "    →" dep)))
+          (println "  Project Dependencies: none"))
+        (if (seq external-deps)
+          (do
+            (println "  External Packages:")
+            (doseq [pkg (sort external-deps)]
+              (println "    →" pkg)))
+          (println "  External Packages: none")))
       (when reverse-dependencies
         (if-let [rev-deps (seq (get reverse-dependencies class))]
           (do (println "  Used by:")
