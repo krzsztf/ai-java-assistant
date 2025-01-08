@@ -1,10 +1,7 @@
 (ns javadeps.core
   (:require [clojure.tools.cli :refer [parse-opts]]
             [clojure.java.io :as io]
-            [clojure.string :as str])
-  (:import [com.github.javaparser StaticJavaParser]
-           [com.github.javaparser.ast CompilationUnit]
-           [java.io File]))
+            [clojure.string :as str]))
 
 (def cli-options
   [["-d" "--dir DIR" "Directory to scan"
@@ -18,44 +15,39 @@
        (filter #(.endsWith (.getName %) ".java"))))
 
 (defn extract-package-name
-  "Extract package name from CompilationUnit"
-  [^CompilationUnit cu]
-  (when-let [package (.getPackageDeclaration cu)]
-    (-> package
-        (.get)
-        (.getNameAsString))))
+  "Extract package name from Java source code"
+  [content]
+  (when-let [package-match (re-find #"package\s+([^;]+);" content)]
+    (str/trim (second package-match))))
 
 (defn extract-class-name
-  "Extract primary class name from CompilationUnit"
-  [^CompilationUnit cu file]
-  (if-let [type-name (-> cu
-                         (.getPrimaryType)
-                         (.map #(.getNameAsString %))
-                         (.orElse nil))]
-    type-name
-    ;; Fallback to file name without .java
+  "Extract class name from Java source code or fallback to file name"
+  [content file]
+  (if-let [class-match (re-find #"(?:public\s+)?(?:class|interface|enum)\s+(\w+)" content)]
+    (second class-match)
     (str/replace (.getName file) #"\.java$" "")))
 
 (defn extract-imports
-  "Extract all imports from CompilationUnit"
-  [^CompilationUnit cu]
-  (->> (.getImports cu)
-       (map #(.getNameAsString %))
-       (set)))
+  "Extract all imports from Java source code"
+  [content]
+  (->> (re-seq #"import\s+([^;]+);" content)
+       (map (comp str/trim second))
+       (remove #(str/includes? % "*"))
+       set))
 
 (defn parse-java-file
   "Parse a Java file and extract its dependencies"
   [^File file]
   (try
-    (let [cu (StaticJavaParser/parse file)
-          package-name (extract-package-name cu)
-          class-name (extract-class-name cu file)
+    (let [content (slurp file)
+          package-name (extract-package-name content)
+          class-name (extract-class-name content file)
           full-class-name (if package-name
                            (str package-name "." class-name)
                            class-name)]
       {:file file
        :class full-class-name
-       :imports (extract-imports cu)})
+       :imports (extract-imports content)})
     (catch Exception e
       (println "Warning: Failed to parse" (.getPath file) "-" (.getMessage e))
       nil)))

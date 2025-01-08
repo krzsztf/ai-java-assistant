@@ -1,22 +1,21 @@
 (ns javadeps.core-test
   (:require [clojure.test :refer :all]
             [javadeps.core :as core]
-            [clojure.java.io :as io])
-  (:import [com.github.javaparser StaticJavaParser]))
+            [clojure.java.io :as io]))
 
 (deftest parse-java-file-test
   (let [temp-file (java.io.File/createTempFile "Test" ".java")]
     (try
-      (spit temp-file "
-package com.example;
+      (spit temp-file "package com.example;
 import java.util.List;
 import java.util.Map;
+import java.util.*;  // Should be ignored
 public class Test {
-}
-")
+}")
       (let [result (core/parse-java-file temp-file)]
         (is (= "com.example.Test" (:class result)))
-        (is (= #{"java.util.List" "java.util.Map"} (:imports result))))
+        (is (= #{"java.util.List" "java.util.Map"} (:imports result)))
+        (is (not (contains? (:imports result) "java.util.*"))))
       (finally
         (.delete temp-file)))))
 

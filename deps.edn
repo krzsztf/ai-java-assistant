@@ -1,7 +1,6 @@
 {:paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.11.1"}
-        org.clojure/tools.cli {:mvn/version "1.0.219"}
-        com.github.javaparser/javaparser-core {:mvn/version "3.25.5"}}
+        org.clojure/tools.cli {:mvn/version "1.0.219"}}
  :aliases
  {:test {:extra-paths ["test"]
          :extra-deps {io.github.cognitect-labs/test-runner
