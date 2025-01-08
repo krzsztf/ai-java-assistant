@@ -229,10 +229,12 @@
                       (println "==================")
                       (printf "Input tokens: %d ($.%03d)\n" 
                              (:input-tokens cost)
-                             (int (* 1000 (* claude-cost-per-1k-input-tokens (/ (:input-tokens cost) 1000)))))
+                             (int (* 1000 (* (get-in llm-configs [:anthropic :cost-per-1k-input-tokens]) 
+                                           (/ (:input-tokens cost) 1000)))))
                       (printf "Output tokens: %d ($.%03d)\n"
                              (:output-tokens cost)
-                             (int (* 1000 (* claude-cost-per-1k-output-tokens (/ (:output-tokens cost) 1000)))))
+                             (int (* 1000 (* (get-in llm-configs [:anthropic :cost-per-1k-output-tokens])
+                                           (/ (:output-tokens cost) 1000)))))
                       (when cost
                         (printf "Total cost: $.%03d\n"
                                (int (* 1000 (:total-cost cost))))))
