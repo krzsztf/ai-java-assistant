@@ -1,9 +1,8 @@
 (ns javadeps.core
   (:require [clojure.tools.cli :refer [parse-opts]]
             [clojure.java.io :as io]
-            [clojure.string :as str]
-            [clojure.data.json :as json]
-            [org.httpkit.client :as http])
+            [javadeps.analyze :as analyze]
+            [javadeps.llm :as llm])
   (:import [java.io File]))
 
 (def ^:private java-std-packages
@@ -206,58 +205,74 @@ Dependency graph:
   (println "============================")
   (println (format-dependency-data dep-data)))
 
+(defn find-java-files
+  "Recursively find all .java files in the given directory"
+  [dir]
+  (->> (file-seq (io/file dir))
+       (filter #(.isFile %))
+       (filter #(.endsWith (.getName %) ".java"))))
+
+(defn parse-java-file
+  "Parse a Java file and extract its dependencies"
+  [^File file]
+  (try
+    (let [{:keys [package class-name imports]} 
+          (analyze/parse-source (slurp file) (.getName file))]
+      {:class (if package (str package "." class-name) class-name)
+       :imports imports})
+    (catch Exception e
+      (println "Warning: Failed to parse" (.getPath file) "-" (.getMessage e))
+      nil)))
+
 (defn -main
   [& args]
   (let [{:keys [options errors summary]} (parse-opts args cli-options)]
-    (cond errors (do (println "Errors:" errors) (System/exit 1))
-          (nil? (:dir options))
-            (do (println "Please specify directory with -d option\n" summary)
-                (System/exit 1))
-          :else
-            (let [java-files (find-java-files (:dir options))
-                  total-files (count java-files)
-                  _ (println "Found" total-files "Java files to process...")
-                  parsed-files
-                    (->> java-files
-                         (map-indexed
-                           (fn [idx file]
-                             (println "Processing file:" (.getPath file))
-                             (when (zero? (mod (inc idx) 10))
-                               (println "Progress:" (inc idx) "/" total-files))
-                             (parse-java-file file)))
-                         (keep identity))
-                  _ (println "Successfully parsed"
-                             (count parsed-files)
-                             "files. Building graph...")
-                  graph-data (build-dependency-graph parsed-files (:package options))
-                  dep-graph (if (:reverse-deps options)
-                             graph-data
-                             (dissoc graph-data :reverse-dependencies))
-                  _ (println "\nDependency Analysis Results:")]
-              (print-dependencies dep-graph)
-              (when (:analyze options)
-                (if-let [{:keys [advice cost]}
-                           (get-refactoring-advice dep-graph (:llm options))]
-                  (do (println "\nRefactoring Suggestions from Claude:")
-                      (println "================================")
-                      (println advice)
-                      (println "\nAPI Cost Information:")
-                      (println "==================")
-                      (printf "Input tokens: %d ($.%03d)\n"
-                              (:input-tokens cost)
-                              (int (* 1000
-                                      (* (get-in llm-config
-                                                 [:anthropic
-                                                  :cost-per-1k-input-tokens])
-                                         (/ (:input-tokens cost) 1000)))))
-                      (printf "Output tokens: %d ($.%03d)\n"
-                              (:output-tokens cost)
-                              (int (* 1000
-                                      (* (get-in llm-config
-                                                 [:anthropic
-                                                  :cost-per-1k-output-tokens])
-                                         (/ (:output-tokens cost) 1000)))))
-                      (when cost
-                        (printf "Total cost: $.%03d\n"
-                                (int (* 1000 (:total-cost cost))))))
-                  (println "\nFailed to get analysis from" (:llm options))))))))
+    (cond 
+      errors 
+      (do (println "Errors:" errors) 
+          (System/exit 1))
+      
+      (nil? (:dir options))
+      (do (println "Please specify directory with -d option\n" summary)
+          (System/exit 1))
+      
+      :else
+      (let [java-files (find-java-files (:dir options))
+            _ (println "Found" (count java-files) "Java files to process...")
+            
+            parsed-files (->> java-files
+                            (map parse-java-file)
+                            (keep identity))
+            _ (println "Successfully parsed" (count parsed-files) "files")
+            
+            graph-data (analyze/build-dependency-graph parsed-files (:package options))
+            dep-graph (if (:reverse-deps options)
+                       graph-data
+                       (dissoc graph-data :reverse-dependencies))
+            formatted-data (analyze/format-dependency-data dep-graph)]
+        
+        (println "\nDependency Analysis Results:")
+        (println "============================")
+        (println formatted-data)
+        
+        (when (:analyze options)
+          (if-let [{:keys [advice cost]} (llm/get-refactoring-advice 
+                                         formatted-data 
+                                         (:llm options))]
+            (do
+              (println "\nRefactoring Suggestions:")
+              (println "=======================")
+              (println advice)
+              
+              (when cost
+                (println "\nAPI Cost Information:")
+                (println "====================")
+                (printf "Input tokens: %d ($.%03d)\n" 
+                        (:input-tokens cost)
+                        (int (* 1000 (/ (:input-tokens cost) 1000))))
+                (printf "Output tokens: %d ($.%03d)\n"
+                        (:output-tokens cost)
+                        (int (* 1000 (/ (:output-tokens cost) 1000))))
+                (printf "Total cost: $.%03d\n"
+                        (int (* 1000 (:total-cost cost))))))
+            (println "\nFailed to get analysis from" (:llm options))))))))
