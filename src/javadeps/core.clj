@@ -34,7 +34,7 @@
                :cost {:input 0.015, :output 0.075}
                :api-key (System/getenv "ANTHROPIC_API_KEY")}
    :ollama {:url (str (or (System/getenv "OLLAMA_HOST") "http://localhost:11434") "/api/generate")
-            :model (or (System/getenv "OLLAMA_MODEL") "qwen2.5-coder:14b")}})
+            :model (or (System/getenv "OLLAMA_MODEL") "qwen2.5-coder:7b")}})
 
 (defn- estimate-tokens [text]
   (int (/ (count text) 4)))
