@@ -201,34 +201,10 @@ Dependency graph:
 
 (defn print-dependencies
   "Print dependency information for all classes"
-  [{:keys [dependencies reverse-dependencies]}]
+  [dep-data]
   (println "\nDependency Analysis Results:")
   (println "============================")
-  (let [all-classes (sort (keys dependencies))]
-    (doseq [class all-classes]
-      (println "\nClass:" class)
-      (let [all-deps (get dependencies class)
-            project-deps (filter #(some #{(get-package-name %)} 
-                                      (map get-package-name (keys dependencies))) 
-                               all-deps)
-            external-deps (group-external-deps all-deps)]
-        (if (seq project-deps)
-          (do 
-            (println "  Project Dependencies:")
-            (doseq [dep (sort project-deps)]
-              (println "    →" dep)))
-          (println "  Project Dependencies: none"))
-        (if (seq external-deps)
-          (do
-            (println "  External Packages:")
-            (doseq [pkg (sort external-deps)]
-              (println "    →" pkg)))
-          (println "  External Packages: none")))
-      (when reverse-dependencies
-        (if-let [rev-deps (seq (get reverse-dependencies class))]
-          (do (println "  Used by:")
-              (doseq [dep (sort rev-deps)] (println "    ←" dep)))
-          (println "  Used by: none"))))))
+  (println (format-dependency-data dep-data)))
 
 (defn -main
   [& args]
