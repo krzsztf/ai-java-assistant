@@ -7,7 +7,7 @@
   (:import [java.io File]))
 
 (def ^:private java-std-packages
-  #{"java." "javax." "sun." "com.sun." "lombok."})
+  #{"java." "javax." "sun." "com.sun." "lombok." "com.fasterxml.jackson."})
 
 (defn- std-lib-class?
   "Check if a class is from Java standard library"
