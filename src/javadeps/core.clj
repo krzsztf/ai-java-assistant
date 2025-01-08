@@ -66,12 +66,12 @@
   "Build dependency graph from parsed Java files"
   [parsed-files]
   (println "\nBuilding dependency map...")
-  (let [class-map (into {} (map (juxt :class identity) parsed-files))
-        _ (println "Found" (count class-map) "unique classes")
+  (let [classes (set (map :class parsed-files))
+        _ (println "Found" (count classes) "unique classes")
         deps-map (reduce (fn [acc {:keys [class imports]}]
-                          (let [filtered-imports (set (filter #(get class-map %) imports))]
-                            (println "Class" class "depends on" (count filtered-imports) "classes")
-                            (assoc acc class filtered-imports)))
+                          (let [filtered-imports (set (filter #(str/starts-with? % (first (str/split class #"\."))) imports))]
+                            (println "Class" class "depends on" (count imports) "classes")
+                            (assoc acc class imports)))
                         {}
                         parsed-files)
         reverse-deps (reduce (fn [acc [class deps]]
