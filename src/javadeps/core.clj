@@ -108,8 +108,9 @@
                   parsed-files (->> java-files
                                   (map-indexed 
                                     (fn [idx file]
+                                      (println "Processing file:" (.getPath file))
                                       (when (zero? (mod (inc idx) 10))
-                                        (println "Processed" (inc idx) "/" total-files))
+                                        (println "Progress:" (inc idx) "/" total-files))
                                       (parse-java-file file)))
                                   (keep identity))
                   _ (println "Successfully parsed" (count parsed-files) "files. Building graph...")
