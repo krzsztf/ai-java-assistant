@@ -33,12 +33,19 @@
                     (map second)
                     (remove #(str/includes? % "*"))
                     (map str/trim)
-                    (do (fn [imps]
-                          (when (seq imps)
-                            (println "Found imports in" (.getName file) ":")
-                            (doseq [imp imps]
-                              (println "  -" imp)))
-                          imps))
+                    (do 
+                      (fn [xs]
+                        (when (seq xs)
+                          (println "Found imports in" (.getName file) ":")
+                          (doseq [x xs]
+                            (println "  -" x)))
+                        xs))
+                    ((fn [xs]
+                       (when (seq xs)
+                         (println "Found imports in" (.getName file) ":")
+                         (doseq [x xs]
+                           (println "  -" x)))
+                       xs))
                     set)]
     {:package package
      :class-name class-name
