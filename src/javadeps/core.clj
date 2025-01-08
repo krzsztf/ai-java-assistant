@@ -81,13 +81,6 @@
                     (map second)
                     (remove #(str/includes? % "*"))
                     (map str/trim)
-                    (do 
-                      (fn [xs]
-                        (when (seq xs)
-                          (println "Found imports in" (.getName file) ":")
-                          (doseq [x xs]
-                            (println "  -" x)))
-                        xs))
                     ((fn [xs]
                        (when (seq xs)
                          (println "Found imports in" (.getName file) ":")
