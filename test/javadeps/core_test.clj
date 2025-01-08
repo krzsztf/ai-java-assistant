@@ -19,6 +19,22 @@ public class Test {
       (finally
         (.delete temp-file)))))
 
+(deftest parse-java-file-annotations-test
+  (let [temp-file (java.io.File/createTempFile "AnnotatedTest" ".java")]
+    (try
+      (spit temp-file "package com.example;
+import java.util.List;
+import static java.util.Collections.emptyList;
+@Deprecated
+public abstract class Test<T> {
+    private class Inner {}
+}")
+      (let [result (core/parse-java-file temp-file)]
+        (is (= "com.example.Test" (:class result)))
+        (is (= #{"java.util.List" "java.util.Collections"} (:imports result))))
+      (finally
+        (.delete temp-file)))))
+
 (deftest parse-java-file-complex-test
   (let [temp-file (java.io.File/createTempFile "ComplexTest" ".java")]
     (try

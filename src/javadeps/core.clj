@@ -6,7 +6,11 @@
 
 (def cli-options
   [["-d" "--dir DIR" "Directory to scan"
-    :validate [#(.isDirectory (io/file %)) "Must be a valid directory"]]])
+    :validate [#(try 
+                  (let [f (io/file %)]
+                    (and (.exists f) (.isDirectory f)))
+                  (catch Exception _ false))
+              "Must be a valid, accessible directory"]]])
 
 (defn find-java-files
   "Recursively find all .java files in the given directory"
@@ -24,16 +28,19 @@
 (defn extract-class-name
   "Extract class name from Java source code or fallback to file name"
   [content file]
-  (if-let [class-match (re-find #"(?:public\s+)?(?:abstract\s+)?(?:class|interface|enum)\s+(\w+)(?:<[^>]+>)?" content)]
+  (if-let [class-match (re-find #"(?:@\w+\s+)*(?:public\s+)?(?:abstract\s+)?(?:class|interface|enum)\s+(\w+)(?:<[^>]+>)?" content)]
     (second class-match)
     (str/replace (.getName file) #"\.java$" "")))
 
 (defn extract-imports
   "Extract all imports from Java source code"
   [content]
-  (->> (re-seq #"import\s+([^;]+);" content)
+  (->> (re-seq #"import\s+(?:static\s+)?([^;]+);" content)
        (map (comp str/trim second))
        (remove #(str/includes? % "*"))
+       (map #(if (str/includes? % " static ")
+              (str/replace % #"\s+static\s+" "")
+              %))
        set))
 
 (defn parse-java-file
@@ -96,12 +103,14 @@
       :else (let [java-files (find-java-files (:dir options))
                   total-files (count java-files)
                   _ (println "Found" total-files "Java files to process...")
+                  success-count (atom 0)
                   parsed-files (keep-indexed (fn [idx file]
                                              (let [result (parse-java-file file)]
+                                               (when result
+                                                 (swap! success-count inc))
                                                (when (zero? (mod (inc idx) 10))
                                                  (println "Processed" (inc idx) "of" total-files "files"
-                                                          (str "(" (count (take (inc idx) parsed-files))
-                                                               " succeeded)")))
+                                                          (str "(" @success-count " succeeded)")))
                                                result))
                                            java-files)
                   _ (println "Finished parsing files. Building dependency graph...")
