@@ -94,6 +94,14 @@
       (nil? (:dir options)) (do (println "Please specify directory with -d option\n" summary)
                                (System/exit 1))
       :else (let [java-files (find-java-files (:dir options))
-                  parsed-files (keep parse-java-file java-files)
-                  dep-graph (build-dependency-graph parsed-files)]
+                  total-files (count java-files)
+                  _ (println "Found" total-files "Java files to process...")
+                  parsed-files (keep-indexed (fn [idx file]
+                                             (when (zero? (mod (inc idx) 10))
+                                               (println "Processed" (inc idx) "of" total-files "files"))
+                                             (parse-java-file file))
+                                           java-files)
+                  _ (println "Finished parsing files. Building dependency graph...")
+                  dep-graph (build-dependency-graph parsed-files)
+                  _ (println "\nDependency Analysis Results:")]
               (print-dependencies dep-graph)))))
