@@ -89,8 +89,7 @@
   [{:keys [dependencies reverse-dependencies]}]
   (println "\nDependency Analysis Results:")
   (println "============================")
-  (let [all-classes (sort (distinct (concat (keys dependencies)
-                                          (keys reverse-dependencies))))]
+  (let [all-classes (sort (keys dependencies))]
     (doseq [class all-classes]
       (println "\nClass:" class)
       (if-let [deps (seq (get dependencies class))]
