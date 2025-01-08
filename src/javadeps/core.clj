@@ -14,15 +14,39 @@
   [class-name]
   (some #(str/starts-with? class-name %) java-std-packages))
 
-(def ^:private claude-cost-per-1k-input-tokens 0.015)
-(def ^:private claude-cost-per-1k-output-tokens 0.075)
+(def ^:private llm-configs
+  {:anthropic {:cost-per-1k-input-tokens 0.015
+               :cost-per-1k-output-tokens 0.075
+               :token-estimator (fn [text] (int (/ (count text) 4)))
+               :api-key (System/getenv "ANTHROPIC_API_KEY")}
+   :ollama {:url (or (System/getenv "OLLAMA_HOST") "http://localhost:11434")
+            :model (or (System/getenv "OLLAMA_MODEL") "codellama")}})
 
-(defn estimate-tokens
-  "Rough estimate of tokens in text"
-  [text]
-  (int (/ (count text) 4)))
+(defn- call-ollama
+  "Call Ollama API for analysis"
+  [prompt]
+  (try
+    @(http/post (str (:url (:ollama llm-configs)) "/api/generate")
+                {:headers {"Content-Type" "application/json"}
+                 :body (json/write-str
+                        {:model (:model (:ollama llm-configs))
+                         :prompt prompt})})
+    (catch Exception e
+      (println "Failed to connect to Ollama:" (.getMessage e))
+      nil)))
 
-(def ^:private anthropic-api-key (System/getenv "ANTHROPIC_API_KEY"))
+(defn- call-anthropic
+  "Call Anthropic API for analysis"
+  [prompt]
+  @(http/post "https://api.anthropic.com/v1/messages"
+              {:headers {"x-api-key" (:api-key (:anthropic llm-configs))
+                        "anthropic-version" "2023-06-01"
+                        "content-type" "application/json"}
+               :body (json/write-str
+                      {:model "claude-3-opus-20240229"
+                       :max_tokens 4096
+                       :messages [{:role "user"
+                                 :content prompt}]})}))
 
 (def cli-options
   [["-d" "--dir DIR" "Directory to scan"
@@ -31,7 +55,10 @@
                     (and (.exists f) (.isDirectory f)))
                   (catch Exception _ false))
               "Must be a valid, accessible directory"]]
-   ["-a" "--analyze" "Submit dependency graph to Anthropic API for analysis"]])
+   ["-a" "--analyze" "Submit dependency graph for AI analysis"]
+   ["-l" "--llm MODEL" "LLM to use for analysis (anthropic or ollama)"
+    :default "anthropic"
+    :validate [#(contains? #{"anthropic" "ollama"} %) "Must be either 'anthropic' or 'ollama'"]]]) 
 
 (defn find-java-files
   "Recursively find all .java files in the given directory"
@@ -115,37 +142,39 @@
            "  Used by: " (str/join ", " (sort (get reverse-dependencies class)))))))
 
 (defn get-refactoring-advice
-  "Send dependency data to Anthropic API and get refactoring advice"
-  [dep-data]
-  (when anthropic-api-key
-    (let [response @(http/post "https://api.anthropic.com/v1/messages"
-                              {:headers {"x-api-key" anthropic-api-key
-                                       "anthropic-version" "2023-06-01"
-                                       "content-type" "application/json"}
-                               :body (json/write-str
-                                     {:model "claude-3-opus-20240229"
-                                      :max_tokens 4096
-                                      :messages [{:role "user"
-                                                :content (str "Analyze this Java project dependency graph and identify the top 3 most important, concrete refactoring improvements. For each:\n"
-                                                            "1. Identify specific classes and their problematic dependency patterns\n"
-                                                            "2. Explain why it's a problem (e.g., tight coupling, circular dependencies)\n"
-                                                            "3. Suggest a specific, actionable solution\n\n"
-                                                            "Focus only on the most critical issues that would give the biggest improvement in maintainability.\n\n"
-                                                            "Dependency graph:\n\n"
-                                                            (format-dependency-data dep-data))}]})})]
-      (if (= 200 (:status response))
-        (let [response-body (json/read-str (:body response))
-              advice (get-in response-body ["content" 0 "text"])
-              input-tokens (estimate-tokens (format-dependency-data dep-data))
-              output-tokens (estimate-tokens advice)
-              input-cost (* claude-cost-per-1k-input-tokens (/ input-tokens 1000))
-              output-cost (* claude-cost-per-1k-output-tokens (/ output-tokens 1000))
-              total-cost (+ input-cost output-cost)]
-          {:advice advice
-           :cost {:input-tokens input-tokens
-                  :output-tokens output-tokens
-                  :total-cost total-cost}})
-        (println "Error getting refactoring advice:" (:status response) (:body response))))))
+  "Get refactoring advice using specified LLM"
+  [dep-data llm]
+  (let [prompt (str "Analyze this Java project dependency graph and identify the top 3 most important, concrete refactoring improvements. For each:\n"
+                    "1. Identify specific classes and their problematic dependency patterns\n"
+                    "2. Explain why it's a problem (e.g., tight coupling, circular dependencies)\n"
+                    "3. Suggest a specific, actionable solution\n\n"
+                    "Focus only on the most critical issues that would give the biggest improvement in maintainability.\n\n"
+                    "Dependency graph:\n\n"
+                    (format-dependency-data dep-data))]
+    (case llm
+      "anthropic"
+      (when-let [api-key (:api-key (:anthropic llm-configs))]
+        (let [response (call-anthropic prompt)]
+          (if (= 200 (:status response))
+            (let [response-body (json/read-str (:body response))
+                  advice (get-in response-body ["content" 0 "text"])
+                  config (:anthropic llm-configs)
+                  input-tokens ((:token-estimator config) (format-dependency-data dep-data))
+                  output-tokens ((:token-estimator config) advice)
+                  input-cost (* (:cost-per-1k-input-tokens config) (/ input-tokens 1000))
+                  output-cost (* (:cost-per-1k-output-tokens config) (/ output-tokens 1000))
+                  total-cost (+ input-cost output-cost)]
+              {:advice advice
+               :cost {:input-tokens input-tokens
+                     :output-tokens output-tokens
+                     :total-cost total-cost}})
+            (println "Error getting refactoring advice:" (:status response) (:body response)))))
+      
+      "ollama"
+      (when-let [response (call-ollama prompt)]
+        (if (= 200 (:status response))
+          {:advice (-> response :body json/read-str (get "response"))}
+          (println "Error getting refactoring advice:" (:status response) (:body response)))))))
 
 (defn print-dependencies
   "Print dependency information for all classes"
@@ -191,8 +220,7 @@
                   _ (println "\nDependency Analysis Results:")]
               (print-dependencies dep-graph)
               (when (:analyze options)
-                (if anthropic-api-key
-                  (if-let [{:keys [advice cost]} (get-refactoring-advice dep-graph)]
+                (if-let [{:keys [advice cost]} (get-refactoring-advice dep-graph (:llm options))]
                     (do
                       (println "\nRefactoring Suggestions from Claude:")
                       (println "================================")
@@ -205,7 +233,7 @@
                       (printf "Output tokens: %d ($.%03d)\n"
                              (:output-tokens cost)
                              (int (* 1000 (* claude-cost-per-1k-output-tokens (/ (:output-tokens cost) 1000)))))
-                      (printf "Total cost: $.%03d\n"
-                             (int (* 1000 (:total-cost cost)))))
-                    (println "\nFailed to get analysis from Anthropic API"))
-                  (println "\nError: ANTHROPIC_API_KEY environment variable not set")))))))
+                      (when cost
+                        (printf "Total cost: $.%03d\n"
+                               (int (* 1000 (:total-cost cost))))))
+                    (println "\nFailed to get analysis from" (:llm options)))))))
