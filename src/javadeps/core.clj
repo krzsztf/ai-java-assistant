@@ -1,8 +1,12 @@
 (ns javadeps.core
   (:require [clojure.tools.cli :refer [parse-opts]]
             [clojure.java.io :as io]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [clojure.data.json :as json]
+            [org.httpkit.client :as http])
   (:import [java.io File]))
+
+(def ^:private anthropic-api-key (System/getenv "ANTHROPIC_API_KEY"))
 
 (def cli-options
   [["-d" "--dir DIR" "Directory to scan"
@@ -84,6 +88,36 @@
     {:dependencies deps-map
      :reverse-dependencies reverse-deps}))
 
+(defn format-dependency-data
+  "Format dependency data for API request"
+  [{:keys [dependencies reverse-dependencies]}]
+  (str/join "\n" 
+    (for [class (sort (keys dependencies))]
+      (str "Class: " class "\n"
+           "  Dependencies: " (str/join ", " (sort (get dependencies class))) "\n"
+           "  Used by: " (str/join ", " (sort (get reverse-dependencies class)))))))
+
+(defn get-refactoring-advice
+  "Send dependency data to Anthropic API and get refactoring advice"
+  [dep-data]
+  (when anthropic-api-key
+    (let [response @(http/post "https://api.anthropic.com/v1/messages"
+                              {:headers {"x-api-key" anthropic-api-key
+                                       "anthropic-version" "2023-06-01"
+                                       "content-type" "application/json"}
+                               :body (json/write-str
+                                     {:model "claude-3-opus-20240229"
+                                      :max_tokens 4096
+                                      :messages [{:role "user"
+                                                :content (str "Analyze this Java project dependency graph and suggest potential refactoring improvements:\n\n"
+                                                            (format-dependency-data dep-data))}]})})]
+      (if (= 200 (:status response))
+        (-> response
+            :body
+            json/read-str
+            (get-in ["content" 0 "text"]))
+        (println "Error getting refactoring advice:" (:status response) (:body response))))))
+
 (defn print-dependencies
   "Print dependency information for all classes"
   [{:keys [dependencies reverse-dependencies]}]
@@ -126,4 +160,8 @@
                   _ (println "Successfully parsed" (count parsed-files) "files. Building graph...")
                   dep-graph (build-dependency-graph parsed-files)
                   _ (println "\nDependency Analysis Results:")]
-              (print-dependencies dep-graph)))))
+              (print-dependencies dep-graph)
+              (when-let [advice (get-refactoring-advice dep-graph)]
+                (println "\nRefactoring Suggestions from Claude:")
+                (println "================================")
+                (println advice))))))
