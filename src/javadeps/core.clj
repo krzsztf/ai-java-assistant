@@ -262,14 +262,14 @@ Dependency graph:
                       (printf "Input tokens: %d ($.%03d)\n"
                               (:input-tokens cost)
                               (int (* 1000
-                                      (* (get-in llm-configs
+                                      (* (get-in llm-config
                                                  [:anthropic
                                                   :cost-per-1k-input-tokens])
                                          (/ (:input-tokens cost) 1000)))))
                       (printf "Output tokens: %d ($.%03d)\n"
                               (:output-tokens cost)
                               (int (* 1000
-                                      (* (get-in llm-configs
+                                      (* (get-in llm-config
                                                  [:anthropic
                                                   :cost-per-1k-output-tokens])
                                          (/ (:output-tokens cost) 1000)))))
