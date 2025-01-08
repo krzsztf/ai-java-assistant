@@ -110,7 +110,12 @@
                                      {:model "claude-3-opus-20240229"
                                       :max_tokens 4096
                                       :messages [{:role "user"
-                                                :content (str "Analyze this Java project dependency graph and suggest potential refactoring improvements:\n\n"
+                                                :content (str "Analyze this Java project dependency graph and identify the top 3 most important, concrete refactoring improvements. For each:\n"
+                                                            "1. Identify specific classes and their problematic dependency patterns\n"
+                                                            "2. Explain why it's a problem (e.g., tight coupling, circular dependencies)\n"
+                                                            "3. Suggest a specific, actionable solution\n\n"
+                                                            "Focus only on the most critical issues that would give the biggest improvement in maintainability.\n\n"
+                                                            "Dependency graph:\n\n"
                                                             (format-dependency-data dep-data))}]})})]
       (if (= 200 (:status response))
         (-> response
