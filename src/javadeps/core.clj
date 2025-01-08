@@ -6,6 +6,14 @@
             [org.httpkit.client :as http])
   (:import [java.io File]))
 
+(def ^:private claude-cost-per-1k-input-tokens 0.015)
+(def ^:private claude-cost-per-1k-output-tokens 0.075)
+
+(defn estimate-tokens
+  "Rough estimate of tokens in text"
+  [text]
+  (int (/ (count text) 4)))
+
 (def ^:private anthropic-api-key (System/getenv "ANTHROPIC_API_KEY"))
 
 (def cli-options
@@ -118,10 +126,17 @@
                                                             "Dependency graph:\n\n"
                                                             (format-dependency-data dep-data))}]})})]
       (if (= 200 (:status response))
-        (-> response
-            :body
-            json/read-str
-            (get-in ["content" 0 "text"]))
+        (let [response-body (json/read-str (:body response))
+              advice (get-in response-body ["content" 0 "text"])
+              input-tokens (estimate-tokens (format-dependency-data dep-data))
+              output-tokens (estimate-tokens advice)
+              input-cost (* claude-cost-per-1k-input-tokens (/ input-tokens 1000))
+              output-cost (* claude-cost-per-1k-output-tokens (/ output-tokens 1000))
+              total-cost (+ input-cost output-cost)]
+          {:advice advice
+           :cost {:input-tokens input-tokens
+                  :output-tokens output-tokens
+                  :total-cost total-cost}})
         (println "Error getting refactoring advice:" (:status response) (:body response))))))
 
 (defn print-dependencies
@@ -169,10 +184,20 @@
               (print-dependencies dep-graph)
               (when (:analyze options)
                 (if anthropic-api-key
-                  (if-let [advice (get-refactoring-advice dep-graph)]
+                  (if-let [{:keys [advice cost]} (get-refactoring-advice dep-graph)]
                     (do
                       (println "\nRefactoring Suggestions from Claude:")
                       (println "================================")
-                      (println advice))
+                      (println advice)
+                      (println "\nAPI Cost Information:")
+                      (println "==================")
+                      (printf "Input tokens: %d ($.%03d)\n" 
+                             (:input-tokens cost)
+                             (int (* 1000 (* claude-cost-per-1k-input-tokens (/ (:input-tokens cost) 1000)))))
+                      (printf "Output tokens: %d ($.%03d)\n"
+                             (:output-tokens cost)
+                             (int (* 1000 (* claude-cost-per-1k-output-tokens (/ (:output-tokens cost) 1000)))))
+                      (printf "Total cost: $.%03d\n"
+                             (int (* 1000 (:total-cost cost)))))
                     (println "\nFailed to get analysis from Anthropic API"))
                   (println "\nError: ANTHROPIC_API_KEY environment variable not set")))))))
