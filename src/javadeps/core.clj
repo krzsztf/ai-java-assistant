@@ -87,17 +87,24 @@
 (defn print-dependencies
   "Print dependency information for all classes"
   [{:keys [dependencies reverse-dependencies]}]
-  (println "\nAnalyzing" (count dependencies) "classes for dependencies...")
-  (doseq [class (sort (keys dependencies))]
-    (println "\nClass:" class)
-    (when-let [deps (seq (get dependencies class))]
-      (println "  Depends on:")
-      (doseq [dep (sort deps)]
-        (println "    -" dep)))
-    (when-let [rev-deps (seq (get reverse-dependencies class))]
-      (println "  Is depended on by:")
-      (doseq [dep (sort rev-deps)]
-        (println "    -" dep)))))
+  (println "\nDependency Analysis Results:")
+  (println "============================")
+  (let [all-classes (sort (distinct (concat (keys dependencies)
+                                          (keys reverse-dependencies))))]
+    (doseq [class all-classes]
+      (println "\nClass:" class)
+      (if-let [deps (seq (get dependencies class))]
+        (do
+          (println "  Dependencies:")
+          (doseq [dep (sort deps)]
+            (println "    →" dep)))
+        (println "  Dependencies: none"))
+      (if-let [rev-deps (seq (get reverse-dependencies class))]
+        (do
+          (println "  Used by:")
+          (doseq [dep (sort rev-deps)]
+            (println "    ←" dep)))
+        (println "  Used by: none")))))
 
 (defn -main [& args]
   (let [{:keys [options errors summary]} (parse-opts args cli-options)]
