@@ -24,7 +24,7 @@
 (defn extract-class-name
   "Extract class name from Java source code or fallback to file name"
   [content file]
-  (if-let [class-match (re-find #"(?:public\s+)?(?:class|interface|enum)\s+(\w+)" content)]
+  (if-let [class-match (re-find #"(?:public\s+)?(?:abstract\s+)?(?:class|interface|enum)\s+(\w+)(?:<[^>]+>)?" content)]
     (second class-match)
     (str/replace (.getName file) #"\.java$" "")))
 
@@ -97,9 +97,12 @@
                   total-files (count java-files)
                   _ (println "Found" total-files "Java files to process...")
                   parsed-files (keep-indexed (fn [idx file]
-                                             (when (zero? (mod (inc idx) 10))
-                                               (println "Processed" (inc idx) "of" total-files "files"))
-                                             (parse-java-file file))
+                                             (let [result (parse-java-file file)]
+                                               (when (zero? (mod (inc idx) 10))
+                                                 (println "Processed" (inc idx) "of" total-files "files"
+                                                          (str "(" (count (take (inc idx) parsed-files))
+                                                               " succeeded)")))
+                                               result))
                                            java-files)
                   _ (println "Finished parsing files. Building dependency graph...")
                   dep-graph (build-dependency-graph parsed-files)

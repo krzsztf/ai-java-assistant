@@ -3,7 +3,7 @@
             [javadeps.core :as core]
             [clojure.java.io :as io]))
 
-(deftest parse-java-file-test
+(deftest parse-java-file-basic-test
   (let [temp-file (java.io.File/createTempFile "Test" ".java")]
     (try
       (spit temp-file "package com.example;
@@ -16,6 +16,20 @@ public class Test {
         (is (= "com.example.Test" (:class result)))
         (is (= #{"java.util.List" "java.util.Map"} (:imports result)))
         (is (not (contains? (:imports result) "java.util.*"))))
+      (finally
+        (.delete temp-file)))))
+
+(deftest parse-java-file-complex-test
+  (let [temp-file (java.io.File/createTempFile "ComplexTest" ".java")]
+    (try
+      (spit temp-file "package com.example;
+import java.util.List;
+public abstract class Test<T> {
+    private class Inner {}
+}")
+      (let [result (core/parse-java-file temp-file)]
+        (is (= "com.example.Test" (:class result)))
+        (is (= #{"java.util.List"} (:imports result))))
       (finally
         (.delete temp-file)))))
 
