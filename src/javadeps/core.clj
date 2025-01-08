@@ -28,37 +28,39 @@
        (map first)
        sort))
 
-(def ^:private llm-configs
-  {:anthropic {:cost-per-1k-input-tokens 0.015,
-               :cost-per-1k-output-tokens 0.075,
-               :token-estimator (fn [text] (int (/ (count text) 4))),
-               :api-key (System/getenv "ANTHROPIC_API_KEY")},
-   :ollama {:url (or (System/getenv "OLLAMA_HOST") "http://localhost:11434"),
+(def ^:private llm-config
+  {:anthropic {:url "https://api.anthropic.com/v1/messages"
+               :model "claude-3-opus-20240229"
+               :cost {:input 0.015, :output 0.075}
+               :api-key (System/getenv "ANTHROPIC_API_KEY")}
+   :ollama {:url (str (or (System/getenv "OLLAMA_HOST") "http://localhost:11434") "/api/generate")
             :model (or (System/getenv "OLLAMA_MODEL") "qwen2.5-coder:14b")}})
 
-(defn- call-ollama
-  "Call Ollama API for analysis"
-  [prompt]
-  (try @(http/post (str (:url (:ollama llm-configs)) "/api/generate")
-                   {:headers {"Content-Type" "application/json"},
-                    :body (json/write-str {:model (:model (:ollama
-                                                            llm-configs)),
-                                           :prompt prompt})})
-       (catch Exception e
-         (println "Failed to connect to Ollama:" (.getMessage e))
-         nil)))
+(defn- estimate-tokens [text]
+  (int (/ (count text) 4)))
 
-(defn- call-anthropic
-  "Call Anthropic API for analysis"
-  [prompt]
-  @(http/post "https://api.anthropic.com/v1/messages"
-              {:headers {"x-api-key" (:api-key (:anthropic llm-configs)),
-                         "anthropic-version" "2023-06-01",
-                         "content-type" "application/json"},
-               :body (json/write-str {:model "claude-3-opus-20240229",
-                                      :max_tokens 4096,
-                                      :messages [{:role "user",
-                                                  :content prompt}]})}))
+(defn- call-llm
+  "Call LLM API for analysis"
+  [type prompt]
+  (let [config (type llm-config)]
+    (try 
+      (case type
+        :anthropic @(http/post (:url config)
+                              {:headers {"x-api-key" (:api-key config)
+                                       "anthropic-version" "2023-06-01"
+                                       "content-type" "application/json"}
+                               :body (json/write-str
+                                     {:model (:model config)
+                                      :max_tokens 4096
+                                      :messages [{:role "user" :content prompt}]})})
+        :ollama @(http/post (:url config)
+                           {:headers {"Content-Type" "application/json"}
+                            :body (json/write-str
+                                   {:model (:model config)
+                                    :prompt prompt})}))
+      (catch Exception e
+        (println "Failed to connect to" (name type) ":" (.getMessage e))
+        nil))))
 
 (def cli-options
   [["-d" "--dir DIR" "Directory to scan" :validate
@@ -156,49 +158,38 @@
                           "  Used by: "
                           (str/join ", " (sort (get reverse-dependencies class)))))))))
 
+(def ^:private refactoring-prompt
+  "Analyze this Java project dependency graph and identify the top 3 most important, concrete refactoring improvements. For each:
+1. Identify specific classes and their problematic dependency patterns
+2. Explain why it's a problem (e.g., tight coupling, circular dependencies)
+3. Suggest a specific, actionable solution
+
+Focus only on the most critical issues that would give the biggest improvement in maintainability.
+
+Dependency graph:
+
+%s")
+
 (defn get-refactoring-advice
   "Get refactoring advice using specified LLM"
   [dep-data llm]
-  (let
-    [prompt
-       (str
-         "Analyze this Java project dependency graph and identify the top 3 most important, concrete refactoring improvements. For each:\n"
-         "1. Identify specific classes and their problematic dependency patterns\n"
-           "2. Explain why it's a problem (e.g., tight coupling, circular dependencies)\n"
-         "3. Suggest a specific, actionable solution\n\n"
-           "Focus only on the most critical issues that would give the biggest improvement in maintainability.\n\n"
-         "Dependency graph:\n\n" (format-dependency-data dep-data))]
-    (case llm
-      "anthropic" (when-let [api-key (:api-key (:anthropic llm-configs))]
-                    (let [response (call-anthropic prompt)]
-                      (if (= 200 (:status response))
-                        (let [response-body (json/read-str (:body response))
-                              advice (get-in response-body ["content" 0 "text"])
-                              config (:anthropic llm-configs)
-                              input-tokens ((:token-estimator config)
-                                             (format-dependency-data dep-data))
-                              output-tokens ((:token-estimator config) advice)
-                              input-cost (* (:cost-per-1k-input-tokens config)
-                                            (/ input-tokens 1000))
-                              output-cost (* (:cost-per-1k-output-tokens config)
-                                             (/ output-tokens 1000))
-                              total-cost (+ input-cost output-cost)]
-                          {:advice advice,
-                           :cost {:input-tokens input-tokens,
-                                  :output-tokens output-tokens,
-                                  :total-cost total-cost}})
-                        (println "Error getting refactoring advice:"
-                                 (:status response)
-                                 (:body response)))))
-      "ollama" (when-let [response (call-ollama prompt)]
-                 (if (= 200 (:status response))
-                   {:advice (-> response
-                                :body
-                                json/read-str
-                                (get "response"))}
-                   (println "Error getting refactoring advice:"
-                            (:status response)
-                            (:body response)))))))
+  (let [prompt (format refactoring-prompt (format-dependency-data dep-data))
+        llm-type (keyword llm)]
+    (when-let [response (call-llm llm-type prompt)]
+      (when (= 200 (:status response))
+        (let [advice (case llm-type
+                      :anthropic (get-in (json/read-str (:body response)) ["content" 0 "text"])
+                      :ollama (get (json/read-str (:body response)) "response"))]
+          (cond-> {:advice advice}
+            (= :anthropic llm-type)
+            (assoc :cost
+                  (let [input-tokens (estimate-tokens prompt)
+                        output-tokens (estimate-tokens advice)
+                        costs (get-in llm-config [:anthropic :cost])]
+                    {:input-tokens input-tokens
+                     :output-tokens output-tokens
+                     :total-cost (+ (* (:input costs) (/ input-tokens 1000))
+                                   (* (:output costs) (/ output-tokens 1000)))}))))))))
 
 (defn print-dependencies
   "Print dependency information for all classes"
