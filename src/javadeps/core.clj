@@ -9,10 +9,12 @@
 (def ^:private java-std-packages
   #{"java." "javax." "sun." "com.sun." "lombok." "com.fasterxml.jackson."})
 
-(defn- std-lib-class?
-  "Check if a class is from Java standard library"
-  [class-name]
-  (some #(str/starts-with? class-name %) java-std-packages))
+(defn- external-class?
+  "Check if a class is external to project"
+  [class-name project-package]
+  (or (some #(str/starts-with? class-name %) java-std-packages)
+      (and (not (str/blank? project-package))
+           (not (str/starts-with? class-name project-package)))))
 
 (defn- get-package-name
   "Extract package name from fully qualified class name"
@@ -66,6 +68,7 @@
   [["-d" "--dir DIR" "Directory to scan" :validate
     [#(try (let [f (io/file %)] (and (.exists f) (.isDirectory f)))
            (catch Exception _ false)) "Must be a valid, accessible directory"]]
+   ["-p" "--package PKG" "Project package prefix (e.g. com.example)" :default ""]]
    ["-a" "--analyze" "Submit dependency graph for AI analysis"]
    ["-l" "--llm MODEL" "LLM to use for analysis (anthropic or ollama)" :default
     "anthropic" :validate
@@ -123,8 +126,9 @@
   (println "\nBuilding dependency map...")
   (let [classes (set (map :class parsed-files))
         _ (println "Found" (count classes) "unique classes")
+        project-pkg (:package options)
         deps-map (reduce (fn [acc {:keys [class imports]}]
-                           (let [filtered-imports (set (remove std-lib-class?
+                           (let [filtered-imports (set (remove #(external-class? % project-pkg)
                                                          imports))]
                              (println "Class"
                                       class
