@@ -19,43 +19,30 @@
        (filter #(.isFile %))
        (filter #(.endsWith (.getName %) ".java"))))
 
-(defn extract-package-name
-  "Extract package name from Java source code"
-  [content]
-  (when-let [package-match (re-find #"package\s+([^;]+);" content)]
-    (str/trim (second package-match))))
-
-(defn extract-class-name
-  "Extract class name from Java source code or fallback to file name"
+(defn parse-source
+  "Extract package, class name and imports from Java source code"
   [content file]
-  (if-let [class-match (re-find #"(?:@\w+\s+)*(?:public\s+)?(?:abstract\s+)?(?:class|interface|enum)\s+(\w+)(?:<[^>]+>)?" content)]
-    (second class-match)
-    (str/replace (.getName file) #"\.java$" "")))
-
-(defn extract-imports
-  "Extract all imports from Java source code"
-  [content]
-  (->> (re-seq #"import\s+(?:static\s+)?([^;]+);" content)
-       (map (comp str/trim second))
-       (remove #(str/includes? % "*"))
-       (map #(if (str/includes? % " static ")
-              (str/replace % #"\s+static\s+" "")
-              %))
-       set))
+  (let [package (when-let [m (re-find #"package\s+([^;]+);" content)]
+                  (str/trim (second m)))
+        class-name (if-let [m (re-find #"(?:@\w+\s*)*(?:\w+\s+)*(?:class|interface|enum)\s+(\w+)" content)]
+                    (second m)
+                    (str/replace (.getName file) #"\.java$" ""))
+        imports (->> (re-seq #"import\s+(?:static\s+)?([^;]+);" content)
+                    (map second)
+                    (remove #(str/includes? % "*"))
+                    (map str/trim)
+                    set)]
+    {:package package
+     :class-name class-name
+     :imports imports}))
 
 (defn parse-java-file
   "Parse a Java file and extract its dependencies"
   [^File file]
   (try
-    (let [content (slurp file)
-          package-name (extract-package-name content)
-          class-name (extract-class-name content file)
-          full-class-name (if package-name
-                           (str package-name "." class-name)
-                           class-name)]
-      {:file file
-       :class full-class-name
-       :imports (extract-imports content)})
+    (let [{:keys [package class-name imports]} (parse-source (slurp file) file)]
+      {:class (if package (str package "." class-name) class-name)
+       :imports imports})
     (catch Exception e
       (println "Warning: Failed to parse" (.getPath file) "-" (.getMessage e))
       nil)))
@@ -103,17 +90,14 @@
       :else (let [java-files (find-java-files (:dir options))
                   total-files (count java-files)
                   _ (println "Found" total-files "Java files to process...")
-                  success-count (atom 0)
-                  parsed-files (keep-indexed (fn [idx file]
-                                             (let [result (parse-java-file file)]
-                                               (when result
-                                                 (swap! success-count inc))
-                                               (when (zero? (mod (inc idx) 10))
-                                                 (println "Processed" (inc idx) "of" total-files "files"
-                                                          (str "(" @success-count " succeeded)")))
-                                               result))
-                                           java-files)
-                  _ (println "Finished parsing files. Building dependency graph...")
+                  parsed-files (->> java-files
+                                  (map-indexed 
+                                    (fn [idx file]
+                                      (when (zero? (mod (inc idx) 10))
+                                        (println "Processed" (inc idx) "/" total-files))
+                                      (parse-java-file file)))
+                                  (keep identity))
+                  _ (println "Successfully parsed" (count parsed-files) "files. Building graph...")
                   dep-graph (build-dependency-graph parsed-files)
                   _ (println "\nDependency Analysis Results:")]
               (print-dependencies dep-graph)))))
