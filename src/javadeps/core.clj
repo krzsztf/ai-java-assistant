@@ -1,7 +1,8 @@
 (ns javadeps.core
   (:require [clojure.tools.cli :refer [parse-opts]]
             [clojure.java.io :as io]
-            [clojure.string :as str]))
+            [clojure.string :as str])
+  (:import [java.io File]))
 
 (def cli-options
   [["-d" "--dir DIR" "Directory to scan"
