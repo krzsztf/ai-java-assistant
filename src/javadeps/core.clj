@@ -20,7 +20,7 @@
                :token-estimator (fn [text] (int (/ (count text) 4)))
                :api-key (System/getenv "ANTHROPIC_API_KEY")}
    :ollama {:url (or (System/getenv "OLLAMA_HOST") "http://localhost:11434")
-            :model (or (System/getenv "OLLAMA_MODEL") "qwen2.5-code:14b")}})
+            :model (or (System/getenv "OLLAMA_MODEL") "qwen2.5-coder:14b")}})
 
 (defn- call-ollama
   "Call Ollama API for analysis"
