@@ -92,7 +92,7 @@
         deps-map (reduce (fn [acc {:keys [class imports]}]
                           (let [filtered-imports (set (remove std-lib-class? imports))]
                             (println "Class" class "depends on" (count filtered-imports) "project classes")
-                            (assoc acc class imports)))
+                            (assoc acc class filtered-imports)))
                         {}
                         parsed-files)
         reverse-deps (reduce (fn [acc [class deps]]
@@ -155,7 +155,7 @@
   (let [all-classes (sort (keys dependencies))]
     (doseq [class all-classes]
       (println "\nClass:" class)
-      (if-let [deps (seq (get dependencies class))]
+      (if-let [deps (seq (remove std-lib-class? (get dependencies class)))]
         (do
           (println "  Dependencies:")
           (doseq [dep (sort deps)]
