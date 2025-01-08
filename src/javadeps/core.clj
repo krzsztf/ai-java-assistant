@@ -14,7 +14,8 @@
                   (let [f (io/file %)]
                     (and (.exists f) (.isDirectory f)))
                   (catch Exception _ false))
-              "Must be a valid, accessible directory"]]])
+              "Must be a valid, accessible directory"]]
+   ["-a" "--analyze" "Submit dependency graph to Anthropic API for analysis"]])
 
 (defn find-java-files
   "Recursively find all .java files in the given directory"
@@ -161,7 +162,12 @@
                   dep-graph (build-dependency-graph parsed-files)
                   _ (println "\nDependency Analysis Results:")]
               (print-dependencies dep-graph)
-              (when-let [advice (get-refactoring-advice dep-graph)]
-                (println "\nRefactoring Suggestions from Claude:")
-                (println "================================")
-                (println advice))))))
+              (when (:analyze options)
+                (if anthropic-api-key
+                  (if-let [advice (get-refactoring-advice dep-graph)]
+                    (do
+                      (println "\nRefactoring Suggestions from Claude:")
+                      (println "================================")
+                      (println advice))
+                    (println "\nFailed to get analysis from Anthropic API"))
+                  (println "\nError: ANTHROPIC_API_KEY environment variable not set")))))))
