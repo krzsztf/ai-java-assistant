@@ -54,7 +54,8 @@
    ["-l" "--llm MODEL" "LLM to use for analysis (anthropic or ollama)" :default
     "anthropic" :validate
     [#(contains? #{"anthropic" "ollama"} %)
-     "Must be either 'anthropic' or 'ollama'"]]])
+     "Must be either 'anthropic' or 'ollama'"]]
+   ["-r" "--reverse-deps" "Include reverse dependencies in analysis"]])
 
 (defn find-java-files
   "Recursively find all .java files in the given directory"
@@ -136,9 +137,10 @@
                    "\n"
                    "  Dependencies: "
                    (str/join ", " (sort (get dependencies class)))
-                   "\n"
-                   "  Used by: "
-                   (str/join ", " (sort (get reverse-dependencies class)))))))
+                   (when reverse-dependencies
+                     (str "\n"
+                          "  Used by: "
+                          (str/join ", " (sort (get reverse-dependencies class)))))))))
 
 (defn get-refactoring-advice
   "Get refactoring advice using specified LLM"
@@ -196,10 +198,11 @@
         (do (println "  Dependencies:")
             (doseq [dep (sort deps)] (println "    →" dep)))
         (println "  Dependencies: none"))
-      (if-let [rev-deps (seq (get reverse-dependencies class))]
-        (do (println "  Used by:")
-            (doseq [dep (sort rev-deps)] (println "    ←" dep)))
-        (println "  Used by: none")))))
+      (when reverse-dependencies
+        (if-let [rev-deps (seq (get reverse-dependencies class))]
+          (do (println "  Used by:")
+              (doseq [dep (sort rev-deps)] (println "    ←" dep)))
+          (println "  Used by: none"))))))
 
 (defn -main
   [& args]
@@ -224,7 +227,10 @@
                   _ (println "Successfully parsed"
                              (count parsed-files)
                              "files. Building graph...")
-                  dep-graph (build-dependency-graph parsed-files)
+                  graph-data (build-dependency-graph parsed-files)
+                  dep-graph (if (:reverse-deps options)
+                             graph-data
+                             (dissoc graph-data :reverse-dependencies))
                   _ (println "\nDependency Analysis Results:")]
               (print-dependencies dep-graph)
               (when (:analyze options)
