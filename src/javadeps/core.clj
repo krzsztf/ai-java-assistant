@@ -23,7 +23,9 @@
   "Extract package, class name and imports from Java source code"
   [content file]
   (let [package (when-let [m (re-find #"package\s+([^;]+);" content)]
-                  (str/trim (second m)))
+                  (let [pkg (str/trim (second m))]
+                    (println "Found package:" pkg)
+                    pkg))
         class-name (if-let [m (re-find #"(?:@\w+\s*)*(?:\w+\s+)*(?:class|interface|enum)\s+(\w+)" content)]
                     (second m)
                     (str/replace (.getName file) #"\.java$" ""))
@@ -31,6 +33,12 @@
                     (map second)
                     (remove #(str/includes? % "*"))
                     (map str/trim)
+                    (do (fn [imps]
+                          (when (seq imps)
+                            (println "Found imports in" (.getName file) ":")
+                            (doseq [imp imps]
+                              (println "  -" imp)))
+                          imps))
                     set)]
     {:package package
      :class-name class-name
