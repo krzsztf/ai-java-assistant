@@ -2,11 +2,11 @@
   "Core analysis functions for Java dependency scanning.
    This namespace contains the pure functional core of the application,
    handling parsing and analysis of Java source files."
-  (:require [clojure.string :as str])) ; str provides string manipulation functions
+  (:require [clojure.string :as string]))
 
 ;; Set of package prefixes that identify standard Java libraries and common external dependencies
 ;; The #{} syntax creates a set literal - sets are collections of unique values
-(def ^:private java-std-packages
+(def ^:private java-ext-packages
   #{"java." "javax." "sun." "com.sun." "lombok." "com.fasterxml.jackson."})
 
 (defn external-class?
@@ -22,17 +22,17 @@
   [class-name project-package]
   (or 
    ;; Check if class belongs to standard Java packages
-   ;; some returns true if any item in java-std-packages matches the predicate
-   (some #(str/starts-with? class-name %) java-std-packages)
+   ;; some returns true if any item in java-ext-packages matches the predicate
+   (some #(string/starts-with? class-name %) java-ext-packages)
    
    ;; Check if class is outside project package (when project package is specified)
-   (and (not (str/blank? project-package))
-        (not (str/starts-with? class-name project-package)))))
+   (and (not (string/blank? project-package))
+        (not (string/starts-with? class-name project-package)))))
 
 (defn get-package-name
   "Extract package name from fully qualified class name"
   [class-name]
-  (str/join "." (butlast (str/split class-name #"\."))))
+  (string/join "." (butlast (string/split class-name #"\."))))
 
 (defn parse-source
   "Parses Java source code to extract key elements using regular expressions.
@@ -61,13 +61,13 @@
         ;; Complex regex handles annotations and modifiers before the type
         class-name (if-let [m (re-find #"(?:@\w+\s*)*(?:\w+\s+)*(?:class|interface|enum)\s+(\w+)" content)]
                     (second m)
-                    (str/replace filename #"\.java$" ""))
+                    (string/replace filename #"\.java$" ""))
         
         ;; Extract and process import statements
         imports (->> (re-seq #"import\s+(?:static\s+)?([^;]+);" content) ; Find all imports
                     (map second)           ; Get capture group from each match
-                    (remove #(str/includes? % "*")) ; Remove wildcard imports
-                    (map str/trim)         ; Clean up whitespace
+                    (remove #(string/includes? % "*")) ; Remove wildcard imports
+                    (map string/trim)         ; Clean up whitespace
                     set)]                  ; Convert to set for uniqueness
     
     ;; Return map of parsed elements
@@ -119,9 +119,9 @@
 (defn format-dependency-data
   "Format dependency data for output"
   [{:keys [dependencies reverse-dependencies]}]
-  (str/join "\n"
+  (string/join "\n"
             (for [class (sort (keys dependencies))]
               (str "Class: " class "\n"
-                   "  Dependencies: " (str/join ", " (sort (get dependencies class)))
+                   "  Dependencies: " (string/join ", " (sort (get dependencies class)))
                    (when reverse-dependencies
-                     (str "\n  Used by: " (str/join ", " (sort (get reverse-dependencies class)))))))))
+                     (str "\n  Used by: " (string/join ", " (sort (get reverse-dependencies class)))))))))
