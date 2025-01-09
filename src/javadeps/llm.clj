@@ -67,4 +67,4 @@ Dependency graph:
                     {:input-tokens input-tokens
                      :output-tokens output-tokens
                      :total-cost (+ (* (:input costs) (/ input-tokens 1000))
-                                   (* (:output costs) (/ output-tokens 1000)))})))))))))
+                                   (* (:output costs) (/ output-tokens 1000)))}))))))))
