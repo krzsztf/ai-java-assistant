@@ -1,5 +1,6 @@
 (ns javadeps.core
-  (:require [clojure.tools.cli :refer [parse-opts]]
+  (:require [clojure.data.json :as json]
+            [clojure.tools.cli :refer [parse-opts]]
             [clojure.java.io :as io]
             [clojure.string :as string]
             [javadeps.analyze :as analyze]
@@ -35,39 +36,6 @@
        (map first)
        sort))
 
-(def ^:private llm-config
-  {:anthropic {:url "https://api.anthropic.com/v1/messages"
-               :model "claude-3-opus-20240229"
-               :cost {:input 0.015, :output 0.075}
-               :api-key (System/getenv "ANTHROPIC_API_KEY")}
-   :ollama {:url (str (or (System/getenv "OLLAMA_HOST") "http://localhost:11434") "/api/generate")
-            :model (or (System/getenv "OLLAMA_MODEL") "qwen2.5-coder:7b")}})
-
-(defn- estimate-tokens [text]
-  (int (/ (count text) 4)))
-
-(defn- call-llm
-  "Call LLM API for analysis"
-  [type prompt]
-  (let [config (type llm-config)]
-    (try 
-      (case type
-        :anthropic @(http/post (:url config)
-                              {:headers {"x-api-key" (:api-key config)
-                                       "anthropic-version" "2023-06-01"
-                                       "content-type" "application/json"}
-                               :body (json/write-str
-                                     {:model (:model config)
-                                      :max_tokens 4096
-                                      :messages [{:role "user" :content prompt}]})})
-        :ollama @(http/post (:url config)
-                           {:headers {"Content-Type" "application/json"}
-                            :body (json/write-str
-                                   {:model (:model config)
-                                    :prompt prompt})}))
-      (catch Exception e
-        (println "Failed to connect to" (name type) ":" (.getMessage e))
-        nil))))
 
 (def cli-options
   [["-d" "--dir DIR" "Directory to scan" :validate
@@ -183,7 +151,7 @@ Dependency graph:
   [dep-data llm]
   (let [prompt (format refactoring-prompt (format-dependency-data dep-data))
         llm-type (keyword llm)]
-    (when-let [response (call-llm llm-type prompt)]
+    (when-let [response (llm/call-llm llm-type prompt)]
       (when (= 200 (:status response))
         (let [advice (case llm-type
                       :anthropic (get-in (json/read-str (:body response)) ["content" 0 "text"])
