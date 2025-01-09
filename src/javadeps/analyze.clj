@@ -34,6 +34,21 @@
   [class-name]
   (string/join "." (butlast (string/split class-name #"\."))))
 
+(defn find-class-references
+  "Find references to other classes in the source code.
+   Looks for words that start with uppercase letters (likely class names).
+   
+   Parameters:
+   - content: Source code content
+   - class-name: Name of current class (to exclude self-references)
+   
+   Returns a set of class names found in the code."
+  [content class-name]
+  (->> (re-seq #"\b[A-Z]\w*\b" content)  ; Find words starting with uppercase
+       (remove #{"String" "Integer" "Boolean" "Double" "Float" "Object" "Class"}) ; Remove common Java types
+       (remove #{class-name})  ; Remove self-references
+       set))
+
 (defn parse-source
   "Parses Java source code to extract key elements using regular expressions.
    
@@ -45,12 +60,14 @@
    - :package - The Java package declaration
    - :class-name - Name of the primary class/interface/enum
    - :imports - Set of fully qualified import statements
+   - :class-refs - Set of potential class references in the code
    
    Example:
    (parse-source \"package com.example;\nimport java.util.List;\" \"MyClass.java\")
    => {:package \"com.example\"
        :class-name \"MyClass\"
-       :imports #{\"java.util.List\"}}"
+       :imports #{\"java.util.List\"}
+       :class-refs #{\"OtherClass\"}}"
   [content filename]
   (let [;; Extract package declaration using regex
         ;; re-find returns first match, second gets the capture group
@@ -68,18 +85,22 @@
                     (map second)           ; Get capture group from each match
                     (remove #(string/includes? % "*")) ; Remove wildcard imports
                     (map string/trim)         ; Clean up whitespace
-                    set)]                  ; Convert to set for uniqueness
+                    set)
+        
+        ;; Find potential class references in the code
+        class-refs (find-class-references content class-name)]
     
     ;; Return map of parsed elements
     {:package package
      :class-name class-name 
-     :imports imports}))
+     :imports imports
+     :class-refs class-refs}))
 
 (defn build-dependency-graph
   "Constructs a bidirectional dependency graph from parsed Java files.
    
    Parameters:
-   - parsed-files: Sequence of maps, each containing :class and :imports
+   - parsed-files: Sequence of maps, each containing :class, :imports, and :class-refs
    - project-pkg: Base package name to filter external dependencies
    
    Returns a map with two keys:
@@ -88,16 +109,34 @@
    
    Example:
    (build-dependency-graph 
-     [{:class \"com.example.A\" :imports #{\"com.example.B\"}}]
+     [{:class \"com.example.A\" 
+       :imports #{\"com.example.B\"}
+       :class-refs #{\"C\"}}]
      \"com.example\")
-   => {:dependencies {\"com.example.A\" #{\"com.example.B\"}}
+   => {:dependencies {\"com.example.A\" #{\"com.example.B\" \"com.example.C\"}}
        :reverse-dependencies {\"com.example.B\" #{\"com.example.A\"}}}"
   [parsed-files project-pkg]
-  (let [;; Build forward dependency map
-        deps-map (reduce (fn [acc {:keys [class imports]}]
+  (let [;; Create map of simple class names to fully qualified names
+        class-map (reduce (fn [acc {:keys [class]}]
+                           (assoc acc 
+                                  (last (string/split class #"\."))
+                                  class))
+                         {}
+                         parsed-files)
+        
+        ;; Build forward dependency map
+        deps-map (reduce (fn [acc {:keys [class imports class-refs package]}]
                           ;; Filter out external dependencies and add to map
-                          (let [filtered-imports (set (remove #(external-class? % project-pkg) imports))]
-                            (assoc acc class filtered-imports)))
+                          (let [;; Process explicit imports
+                                filtered-imports (set (remove #(external-class? % project-pkg) imports))
+                                ;; Process class references, qualifying them with package if found in class-map
+                                package-deps (->> class-refs
+                                                (keep #(or (get class-map %)
+                                                         (when package
+                                                           (str package "." %))))
+                                                (remove #(external-class? % project-pkg))
+                                                set)]
+                            (assoc acc class (into filtered-imports package-deps))))
                         {}  ; Start with empty map
                         parsed-files)
         
