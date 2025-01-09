@@ -7,36 +7,6 @@
             [javadeps.llm :as llm])
   (:import [java.io File]))
 
-(def ^:private java-std-packages
-  #{"java." "javax." "sun." "com.sun." "lombok." "com.fasterxml.jackson."})
-
-(defn- std-lib-class?
-  "Check if a class is from Java standard library"
-  [class-name]
-  (some #(string/starts-with? class-name %) java-std-packages))
-
-(defn- external-class?
-  "Check if a class is external to project"
-  [class-name project-package]
-  (or (some #(string/starts-with? class-name %) java-std-packages)
-      (and (not (string/blank? project-package))
-           (not (string/starts-with? class-name project-package)))))
-
-(defn- get-package-name
-  "Extract package name from fully qualified class name"
-  [class-name]
-  (string/join "." (butlast (string/split class-name #"\."))))
-
-(defn- group-external-deps
-  "Group external dependencies by package"
-  [deps]
-  (->> deps
-       (remove std-lib-class?)
-       (group-by get-package-name)
-       (map first)
-       sort))
-
-
 (def cli-options
   [["-d" "--dir DIR" "Directory to scan" :validate
     [#(try (let [f (io/file %)] (and (.exists f) (.isDirectory f)))
@@ -56,123 +26,12 @@
        (filter #(.isFile %))
        (filter #(.endsWith (.getName %) ".java"))))
 
-(defn parse-source
-  "Extract package, class name and imports from Java source code"
-  [content file]
-  (let [package (when-let [m (re-find #"package\s+([^;]+);" content)]
-                  (let [pkg (string/trim (second m))]
-                    (println "Found package:" pkg)
-                    pkg))
-        class-name
-          (if-let
-            [m (re-find
-                 #"(?:@\w+\s*)*(?:\w+\s+)*(?:class|interface|enum)\s+(\w+)"
-                 content)]
-            (second m)
-            (string/replace (.getName file) #"\.java$" ""))
-        imports (->> (re-seq #"import\s+(?:static\s+)?([^;]+);" content)
-                     (map second)
-                     (remove #(string/includes? % "*"))
-                     (map string/trim)
-                     ((fn [xs]
-                        (when (seq xs)
-                          (println "Found imports in" (.getName file) ":")
-                          (doseq [x xs] (println "  -" x)))
-                        xs))
-                     set)]
-    {:package package, :class-name class-name, :imports imports}))
-
-(defn parse-java-file
-  "Parse a Java file and extract its dependencies"
-  [^File file]
-  (try
-    (let [{:keys [package class-name imports]} (parse-source (slurp file) file)]
-      {:class (if package (str package "." class-name) class-name),
-       :imports imports})
-    (catch Exception e
-      (println "Warning: Failed to parse" (.getPath file) "-" (.getMessage e))
-      nil)))
-
-(defn build-dependency-graph
-  "Build dependency graph from parsed Java files"
-  [parsed-files project-pkg]
-  (println "\nBuilding dependency map...")
-  (let [classes (set (map :class parsed-files))
-        _ (println "Found" (count classes) "unique classes")
-        deps-map (reduce (fn [acc {:keys [class imports]}]
-                           (let [filtered-imports (set (remove #(external-class? % project-pkg)
-                                                         imports))]
-                             (println "Class"
-                                      class
-                                      "depends on"
-                                      (count filtered-imports)
-                                      "project classes")
-                             (assoc acc class filtered-imports)))
-                   {}
-                   parsed-files)
-        reverse-deps (reduce (fn [acc [class deps]]
-                               (reduce (fn [m dep]
-                                         (update m dep (fnil conj #{}) class))
-                                 acc
-                                 deps))
-                       {}
-                       deps-map)]
-    {:dependencies deps-map, :reverse-dependencies reverse-deps}))
-
-(defn format-dependency-data
-  "Format dependency data for API request"
-  [{:keys [dependencies reverse-dependencies]}]
-  (string/join "\n"
-            (for [class (sort (keys dependencies))]
-              (str "Class: "
-                   class
-                   "\n"
-                   "  Dependencies: "
-                   (string/join ", " (sort (get dependencies class)))
-                   (when reverse-dependencies
-                     (str "\n"
-                          "  Used by: "
-                          (string/join ", " (sort (get reverse-dependencies class)))))))))
-
-(def ^:private refactoring-prompt
-  "Analyze this Java project dependency graph and identify the top 3 most important, concrete refactoring improvements. For each:
-1. Identify specific classes and their problematic dependency patterns
-2. Explain why it's a problem (e.g., tight coupling, circular dependencies)
-3. Suggest a specific, actionable solution
-
-Focus only on the most critical issues that would give the biggest improvement in maintainability.
-
-Dependency graph:
-
-%s")
-
-(defn get-refactoring-advice
-  "Get refactoring advice using specified LLM"
-  [dep-data llm]
-  (let [prompt (format refactoring-prompt (format-dependency-data dep-data))
-        llm-type (keyword llm)]
-    (when-let [response (llm/call-llm llm-type prompt)]
-      (when (= 200 (:status response))
-        (let [advice (case llm-type
-                      :anthropic (get-in (json/read-str (:body response)) ["content" 0 "text"])
-                      :ollama (get (json/read-str (:body response)) "response"))]
-          (cond-> {:advice advice}
-            (= :anthropic llm-type)
-            (assoc :cost
-                  (let [input-tokens (estimate-tokens prompt)
-                        output-tokens (estimate-tokens advice)
-                        costs (get-in llm-config [:anthropic :cost])]
-                    {:input-tokens input-tokens
-                     :output-tokens output-tokens
-                     :total-cost (+ (* (:input costs) (/ input-tokens 1000))
-                                   (* (:output costs) (/ output-tokens 1000)))}))))))))
-
 (defn print-dependencies
   "Print dependency information for all classes"
   [dep-data]
   (println "\nDependency Analysis Results:")
   (println "============================")
-  (println (format-dependency-data dep-data)))
+  (println (analyze/format-dependency-data dep-data)))
 
 (defn find-java-files
   "Recursively find all .java files in the given directory"
