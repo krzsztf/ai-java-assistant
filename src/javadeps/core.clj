@@ -1,6 +1,7 @@
 (ns javadeps.core
   (:require [clojure.tools.cli :refer [parse-opts]]
             [clojure.java.io :as io]
+            [clojure.string :as string]
             [javadeps.analyze :as analyze]
             [javadeps.llm :as llm])
   (:import [java.io File]))
@@ -11,19 +12,19 @@
 (defn- std-lib-class?
   "Check if a class is from Java standard library"
   [class-name]
-  (some #(str/starts-with? class-name %) java-std-packages))
+  (some #(string/starts-with? class-name %) java-std-packages))
 
 (defn- external-class?
   "Check if a class is external to project"
   [class-name project-package]
-  (or (some #(str/starts-with? class-name %) java-std-packages)
-      (and (not (str/blank? project-package))
-           (not (str/starts-with? class-name project-package)))))
+  (or (some #(string/starts-with? class-name %) java-std-packages)
+      (and (not (string/blank? project-package))
+           (not (string/starts-with? class-name project-package)))))
 
 (defn- get-package-name
   "Extract package name from fully qualified class name"
   [class-name]
-  (str/join "." (butlast (str/split class-name #"\."))))
+  (string/join "." (butlast (string/split class-name #"\."))))
 
 (defn- group-external-deps
   "Group external dependencies by package"
@@ -91,7 +92,7 @@
   "Extract package, class name and imports from Java source code"
   [content file]
   (let [package (when-let [m (re-find #"package\s+([^;]+);" content)]
-                  (let [pkg (str/trim (second m))]
+                  (let [pkg (string/trim (second m))]
                     (println "Found package:" pkg)
                     pkg))
         class-name
@@ -100,11 +101,11 @@
                  #"(?:@\w+\s*)*(?:\w+\s+)*(?:class|interface|enum)\s+(\w+)"
                  content)]
             (second m)
-            (str/replace (.getName file) #"\.java$" ""))
+            (string/replace (.getName file) #"\.java$" ""))
         imports (->> (re-seq #"import\s+(?:static\s+)?([^;]+);" content)
                      (map second)
-                     (remove #(str/includes? % "*"))
-                     (map str/trim)
+                     (remove #(string/includes? % "*"))
+                     (map string/trim)
                      ((fn [xs]
                         (when (seq xs)
                           (println "Found imports in" (.getName file) ":")
@@ -153,17 +154,17 @@
 (defn format-dependency-data
   "Format dependency data for API request"
   [{:keys [dependencies reverse-dependencies]}]
-  (str/join "\n"
+  (string/join "\n"
             (for [class (sort (keys dependencies))]
               (str "Class: "
                    class
                    "\n"
                    "  Dependencies: "
-                   (str/join ", " (sort (get dependencies class)))
+                   (string/join ", " (sort (get dependencies class)))
                    (when reverse-dependencies
                      (str "\n"
                           "  Used by: "
-                          (str/join ", " (sort (get reverse-dependencies class)))))))))
+                          (string/join ", " (sort (get reverse-dependencies class)))))))))
 
 (def ^:private refactoring-prompt
   "Analyze this Java project dependency graph and identify the top 3 most important, concrete refactoring improvements. For each:
