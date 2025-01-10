@@ -46,6 +46,7 @@
     (let [content "package com.example;
                    import java.util.List;
                    import com.other.Thing;
+                   import static java.util.Collections.emptyList;
                    
                    public class MyClass {
                      private OtherClass field;
@@ -53,7 +54,7 @@
           result (analyze/parse-source content "MyClass.java")]
       (is (= "com.example" (:package result)))
       (is (= "MyClass" (:class-name result)))
-      (is (= #{"java.util.List" "com.other.Thing"} (:imports result)))
+      (is (= #{"java.util.List" "com.other.Thing" "java.util.Collections"} (:imports result)))
       (is (= #{"OtherClass"} (:class-refs result)))))
   (testing "Handles source without package declaration"
     (let [result (analyze/parse-source "public class Test {}" "Test.java")]
