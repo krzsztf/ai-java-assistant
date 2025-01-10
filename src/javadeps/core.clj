@@ -47,7 +47,7 @@
   [^File file]
   (try
     (let [{:keys [package class-name imports] :as analysis} (analyze/parse-source (slurp file) (.getName file))]
-      (assoc analysis :class (if package (str package "." class-name) class-name)))
+      (assoc analysis :class (str package "." class-name)))
     (catch Exception e
       (println "Warning: Failed to parse" (.getPath file) "-" (.getMessage e))
       nil)))
