@@ -31,6 +31,7 @@
                            {:headers {"Content-Type" "application/json"}
                             :body (json/write-str
                                    {:model (:model config)
+                                    :stream false
                                     :prompt prompt})}))
       (catch Exception e
         (println "Failed to connect to" (name type) ":" (.getMessage e))
