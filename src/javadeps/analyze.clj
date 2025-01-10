@@ -44,7 +44,7 @@
    
    Returns a set of class names found in the code."
   [content class-name]
-  (->> (re-seq #"\b[A-Z]\w*\b" content)  ; Find words starting with uppercase
+  (->> (re-seq #"(?<=[(\s])[A-Z]\w*(?=\s)" content)  ; Find words starting with uppercase
        (remove #{"String" "Integer" "Boolean" "Double" "Float" "Object" "Class"}) ; Remove common Java types
        (remove #{class-name})  ; Remove self-references
        set))
