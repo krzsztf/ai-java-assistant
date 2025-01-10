@@ -13,7 +13,7 @@
   [["-d" "--dir DIR" "Directory to scan" :validate
     [#(try (let [f (io/file %)] (and (.exists f) (.isDirectory f)))
            (catch Exception _ false)) "Must be a valid, accessible directory"]]
-   ["-p" "--package PKG" "Project package prefix (e.g. com.example)" :default ""]
+   ["-p" "--package PKG" "Project package prefix (e.g. com.example)"]
    ["-a" "--analyze" "Submit dependency graph for AI analysis"]
    ["-l" "--llm MODEL" "LLM to use for analysis (anthropic or ollama)" :default
     "anthropic" :validate
@@ -61,6 +61,9 @@
           (System/exit 1))
       (nil? (:dir options))
       (do (println "Please specify directory with -d option\n" summary)
+          (System/exit 1))
+      (nil? (:package options))
+      (do (println "Please specify package with -p option\n" summary)
           (System/exit 1))
       :else
       (let [java-files (find-java-files (:dir options))
