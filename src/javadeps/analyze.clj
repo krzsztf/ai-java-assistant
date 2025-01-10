@@ -7,10 +7,10 @@
 
 ;; Set of package prefixes that identify standard Java libraries and common external dependencies
 ;; The #{} syntax creates a set literal - sets are collections of unique values
-(def ^:private java-ext-packages
-  #{"java." "javax." "sun." "com.sun." "lombok." "com.fasterxml.jackson."})
+(def ^:private java-util-packages
+  #{"java." "javax." "sun." "com.sun." "lombok."})
 
-(defn external-class?
+(defn util-class?
   "Determines if a class is external to the project by checking:
    1. If it belongs to standard Java packages (like java.*, javax.*)
    2. If it doesn't match the project's package prefix
@@ -24,10 +24,7 @@
   (or
     ;; Check if class belongs to standard Java packages
     ;; some returns true if any item in java-ext-packages matches the predicate
-    (some #(string/starts-with? class-name %) java-ext-packages)
-    ;; Check if class is outside project package (when project package is specified)
-    (and (not (string/blank? project-package))
-         (not (string/starts-with? class-name project-package)))))
+    (some #(string/starts-with? class-name %) java-util-packages)))
 
 (defn get-package-name
   "Extract package name from fully qualified class name"
@@ -126,7 +123,12 @@
         deps-map (reduce (fn [acc {:keys [class imports class-refs package]}]
                            ;; Filter out external dependencies and add to map
                            (let [;; Process explicit imports
-                                 filtered-imports (set (remove #(external-class? % project-pkg) imports))
+                                 filtered-imports (->> imports
+                                                       (remove #(util-class? % project-pkg))
+                                                       (map #(if (string/starts-with? % project-pkg)
+                                                               %
+                                                               (get-package-name %)))
+                                                       set)
                                  ;; Process class references, qualifying them with package if found in class-map
                                  package-deps (->> class-refs
                                                    (keep #(get class-map %))
