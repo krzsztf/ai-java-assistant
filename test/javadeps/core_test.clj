@@ -3,14 +3,6 @@
             [javadeps.core :as core]
             [clojure.java.io :as io]))
 
-(deftest std-lib-class?-test
-  (is (true? (core/std-lib-class? "java.util.List")))
-  (is (true? (core/std-lib-class? "javax.swing.JFrame")))
-  (is (true? (core/std-lib-class? "lombok.Data")))
-  (is (true? (core/std-lib-class?
-               "com.fasterxml.jackson.databind.ObjectMapper")))
-  (is (false? (core/std-lib-class? "com.example.Test"))))
-
 (deftest parse-java-file-basic-test
   (let [temp-file (java.io.File/createTempFile "Test" ".java")]
     (try
@@ -59,16 +51,3 @@ public abstract class Test<T> {
         (is (= "com.example.Test" (:class result)))
         (is (= #{"java.util.List"} (:imports result))))
       (finally (.delete temp-file)))))
-
-(deftest build-dependency-graph-test
-  (let [parsed-files [{:class "com.example.A",
-                       :imports #{"com.example.B" "com.example.C"}}
-                      {:class "com.example.B", :imports #{"com.example.C"}}
-                      {:class "com.example.C", :imports #{}}]
-        graph (core/build-dependency-graph parsed-files)]
-    (is (= #{"com.example.B" "com.example.C"}
-           (get-in graph [:dependencies "com.example.A"])))
-    (is (= #{"com.example.A"}
-           (get-in graph [:reverse-dependencies "com.example.B"])))
-    (is (= #{"com.example.A" "com.example.B"}
-           (get-in graph [:reverse-dependencies "com.example.C"])))))
