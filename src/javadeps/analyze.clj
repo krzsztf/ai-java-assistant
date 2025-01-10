@@ -80,10 +80,13 @@
                      (string/replace filename #"\.java$" ""))
         ;; Extract and process import statements
         imports (->> (re-seq #"import\s+(?:static\s+)?([^;]+);" content) ; Find all imports
-                  (map second)           ; Get capture group from each match
-                  (remove #(string/includes? % "*")) ; Remove wildcard imports
-                  (map string/trim)         ; Clean up whitespace
-                  set)
+                     (map (fn [[full imp]]         ; Handle static imports
+                            (if (string/includes? full "static")
+                              (string/join "." (butlast (string/split imp #"\.")))
+                              imp)))
+                     (remove #(string/includes? % "*")) ; Remove wildcard imports
+                     (map string/trim)      ; Clean up whitespace
+                     set)
         ;; Find potential class references in the code
         class-refs (find-class-references content class-name)]
     ;; Return map of parsed elements

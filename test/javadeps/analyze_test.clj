@@ -55,6 +55,16 @@
       (is (= "com.example" (:package result)))
       (is (= "MyClass" (:class-name result)))
       (is (= #{"java.util.List" "com.other.Thing" "java.util.Collections"} (:imports result)))
+      (testing "Static imports are handled correctly"
+        (let [content "package com.example;
+                      import static java.util.Arrays.asList;
+                      import static org.junit.Assert.*;
+                      import static com.example.Constants.MAX_SIZE;
+                      
+                      public class Test {}"
+              result (analyze/parse-source content "Test.java")]
+          (is (= #{"java.util.Arrays" "org.junit.Assert" "com.example.Constants"}
+                 (:imports result)))))
       (is (= #{"OtherClass"} (:class-refs result)))))
   (testing "Handles source without package declaration"
     (let [result (analyze/parse-source "public class Test {}" "Test.java")]
