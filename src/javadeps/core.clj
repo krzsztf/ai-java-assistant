@@ -46,10 +46,8 @@
   "Parse a Java file and extract its dependencies"
   [^File file]
   (try
-    (let [{:keys [package class-name imports]}
-          (analyze/parse-source (slurp file) (.getName file))]
-      {:class (if package (str package "." class-name) class-name)
-       :imports imports})
+    (let [{:keys [package class-name imports] :as analysis} (analyze/parse-source (slurp file) (.getName file))]
+      (assoc analysis :class (if package (str package "." class-name) class-name)))
     (catch Exception e
       (println "Warning: Failed to parse" (.getPath file) "-" (.getMessage e))
       nil)))

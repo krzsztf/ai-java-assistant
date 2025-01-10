@@ -129,11 +129,8 @@
                                  filtered-imports (set (remove #(external-class? % project-pkg) imports))
                                  ;; Process class references, qualifying them with package if found in class-map
                                  package-deps (->> class-refs
-                                                (keep #(or (get class-map %)
-                                                         (when package
-                                                           (str package "." %))))
-                                                (remove #(external-class? % project-pkg))
-                                                set)]
+                                                   (keep #(get class-map %))
+                                                   set)]
                              (assoc acc class (into filtered-imports package-deps))))
                    {}  ; Start with empty map
                    parsed-files)
