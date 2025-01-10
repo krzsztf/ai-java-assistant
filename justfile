@@ -1,2 +1,2 @@
 fmt:
-    npx @chrisoakman/standard-clojure-style fix src
+    npx @chrisoakman/standard-clojure-style fix src test

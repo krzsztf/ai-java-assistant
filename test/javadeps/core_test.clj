@@ -1,7 +1,8 @@
 (ns javadeps.core-test
-  (:require [clojure.test :refer :all]
-            [javadeps.core :as core]
-            [clojure.java.io :as io]))
+  (:require
+   [clojure.java.io :as io]
+   [clojure.test :refer :all]
+   [javadeps.core :as core]))
 
 (deftest parse-java-file-basic-test
   (let [temp-file (java.io.File/createTempFile "Test" ".java")]
