@@ -1,11 +1,13 @@
 (ns javadeps.core
-  (:require [clojure.data.json :as json]
-            [clojure.tools.cli :refer [parse-opts]]
-            [clojure.java.io :as io]
-            [clojure.string :as string]
-            [javadeps.analyze :as analyze]
-            [javadeps.llm :as llm])
-  (:import [java.io File]))
+  (:require
+   [clojure.data.json :as json]
+   [clojure.java.io :as io]
+   [clojure.string :as string]
+   [clojure.tools.cli :refer [parse-opts]]
+   [javadeps.analyze :as analyze]
+   [javadeps.llm :as llm])
+  (:import
+   (java.io File)))
 
 (def cli-options
   [["-d" "--dir DIR" "Directory to scan" :validate
@@ -44,7 +46,7 @@
   "Parse a Java file and extract its dependencies"
   [^File file]
   (try
-    (let [{:keys [package class-name imports]} 
+    (let [{:keys [package class-name imports]}
           (analyze/parse-source (slurp file) (.getName file))]
       {:class (if package (str package "." class-name) class-name)
        :imports imports})
@@ -55,47 +57,40 @@
 (defn -main
   [& args]
   (let [{:keys [options errors summary]} (parse-opts args cli-options)]
-    (cond 
-      errors 
-      (do (println "Errors:" errors) 
+    (cond
+      errors
+      (do (println "Errors:" errors)
           (System/exit 1))
-      
       (nil? (:dir options))
       (do (println "Please specify directory with -d option\n" summary)
           (System/exit 1))
-      
       :else
       (let [java-files (find-java-files (:dir options))
             _ (println "Found" (count java-files) "Java files to process...")
-            
             parsed-files (->> java-files
-                            (map parse-java-file)
-                            (keep identity))
+                           (map parse-java-file)
+                           (keep identity))
             _ (println "Successfully parsed" (count parsed-files) "files")
-            
             graph-data (analyze/build-dependency-graph parsed-files (:package options))
             dep-graph (if (:reverse-deps options)
-                       graph-data
-                       (dissoc graph-data :reverse-dependencies))
+                        graph-data
+                        (dissoc graph-data :reverse-dependencies))
             formatted-data (analyze/format-dependency-data dep-graph)]
-        
         (println "\nDependency Analysis Results:")
         (println "============================")
         (println formatted-data)
-        
         (when (:analyze options)
-          (if-let [{:keys [advice cost]} (llm/get-refactoring-advice 
-                                         formatted-data 
-                                         (:llm options))]
+          (if-let [{:keys [advice cost]} (llm/get-refactoring-advice
+                                           formatted-data
+                                           (:llm options))]
             (do
               (println "\nRefactoring Suggestions:")
               (println "=======================")
               (println advice)
-              
               (when cost
                 (println "\nAPI Cost Information:")
                 (println "====================")
-                (printf "Input tokens: %d ($.%03d)\n" 
+                (printf "Input tokens: %d ($.%03d)\n"
                         (:input-tokens cost)
                         (int (* 1000 (/ (:input-tokens cost) 1000))))
                 (printf "Output tokens: %d ($.%03d)\n"

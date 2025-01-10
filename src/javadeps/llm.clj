@@ -1,6 +1,7 @@
 (ns javadeps.llm
-  (:require [clojure.data.json :as json]
-            [org.httpkit.client :as http]))
+  (:require
+   [clojure.data.json :as json]
+   [org.httpkit.client :as http]))
 
 (def ^:private llm-config
   {:anthropic {:url "https://api.anthropic.com/v1/messages"
@@ -17,22 +18,22 @@
   "Call LLM API for analysis"
   [type prompt]
   (let [config (type llm-config)]
-    (try 
+    (try
       (case type
         :anthropic @(http/post (:url config)
-                              {:headers {"x-api-key" (:api-key config)
-                                       "anthropic-version" "2023-06-01"
-                                       "content-type" "application/json"}
-                               :body (json/write-str
-                                     {:model (:model config)
-                                      :max_tokens 4096
-                                      :messages [{:role "user" :content prompt}]})})
+                      {:headers {"x-api-key" (:api-key config)
+                                 "anthropic-version" "2023-06-01"
+                                 "content-type" "application/json"}
+                       :body (json/write-str
+                               {:model (:model config)
+                                :max_tokens 4096
+                                :messages [{:role "user" :content prompt}]})})
         :ollama @(http/post (:url config)
-                           {:headers {"Content-Type" "application/json"}
-                            :body (json/write-str
-                                   {:model (:model config)
-                                    :stream false
-                                    :prompt prompt})}))
+                            {:headers {"Content-Type" "application/json"}
+                             :body (json/write-str
+                                     {:model (:model config)
+                                      :stream false
+                                      :prompt prompt})}))
       (catch Exception e
         (println "Failed to connect to" (name type) ":" (.getMessage e))
         nil))))
@@ -57,15 +58,15 @@ Dependency graph:
     (when-let [response (call-llm llm-type prompt)]
       (when (= 200 (:status response))
         (let [advice (case llm-type
-                      :anthropic (get-in (json/read-str (:body response)) ["content" 0 "text"])
-                      :ollama (get (json/read-str (:body response)) "response"))]
+                       :anthropic (get-in (json/read-str (:body response)) ["content" 0 "text"])
+                       :ollama (get (json/read-str (:body response)) "response"))]
           (cond-> {:advice advice}
             (= :anthropic llm-type)
             (assoc :cost
-                  (let [input-tokens (estimate-tokens prompt)
-                        output-tokens (estimate-tokens advice)
-                        costs (get-in llm-config [:anthropic :cost])]
-                    {:input-tokens input-tokens
-                     :output-tokens output-tokens
-                     :total-cost (+ (* (:input costs) (/ input-tokens 1000))
-                                   (* (:output costs) (/ output-tokens 1000)))}))))))))
+              (let [input-tokens (estimate-tokens prompt)
+                    output-tokens (estimate-tokens advice)
+                    costs (get-in llm-config [:anthropic :cost])]
+                {:input-tokens input-tokens
+                 :output-tokens output-tokens
+                 :total-cost (+ (* (:input costs) (/ input-tokens 1000))
+                               (* (:output costs) (/ output-tokens 1000)))}))))))))

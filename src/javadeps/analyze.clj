@@ -2,7 +2,8 @@
   "Core analysis functions for Java dependency scanning.
    This namespace contains the pure functional core of the application,
    handling parsing and analysis of Java source files."
-  (:require [clojure.string :as string]))
+  (:require
+   [clojure.string :as string]))
 
 ;; Set of package prefixes that identify standard Java libraries and common external dependencies
 ;; The #{} syntax creates a set literal - sets are collections of unique values
@@ -20,14 +21,13 @@
    
    Returns true if the class is external, false if it's part of the project."
   [class-name project-package]
-  (or 
-   ;; Check if class belongs to standard Java packages
-   ;; some returns true if any item in java-ext-packages matches the predicate
-   (some #(string/starts-with? class-name %) java-ext-packages)
-   
-   ;; Check if class is outside project package (when project package is specified)
-   (and (not (string/blank? project-package))
-        (not (string/starts-with? class-name project-package)))))
+  (or
+    ;; Check if class belongs to standard Java packages
+    ;; some returns true if any item in java-ext-packages matches the predicate
+    (some #(string/starts-with? class-name %) java-ext-packages)
+    ;; Check if class is outside project package (when project package is specified)
+    (and (not (string/blank? project-package))
+         (not (string/starts-with? class-name project-package)))))
 
 (defn get-package-name
   "Extract package name from fully qualified class name"
@@ -73,26 +73,22 @@
         ;; re-find returns first match, second gets the capture group
         package (when-let [m (re-find #"package\s+([^;]+);" content)]
                   (second m))
-        
         ;; Extract class/interface/enum name, falling back to filename if not found
         ;; Complex regex handles annotations and modifiers before the type
         class-name (if-let [m (re-find #"(?:@\w+\s*)*(?:\w+\s+)*(?:class|interface|enum)\s+(\w+)" content)]
-                    (second m)
-                    (string/replace filename #"\.java$" ""))
-        
+                     (second m)
+                     (string/replace filename #"\.java$" ""))
         ;; Extract and process import statements
         imports (->> (re-seq #"import\s+(?:static\s+)?([^;]+);" content) ; Find all imports
-                    (map second)           ; Get capture group from each match
-                    (remove #(string/includes? % "*")) ; Remove wildcard imports
-                    (map string/trim)         ; Clean up whitespace
-                    set)
-        
+                  (map second)           ; Get capture group from each match
+                  (remove #(string/includes? % "*")) ; Remove wildcard imports
+                  (map string/trim)         ; Clean up whitespace
+                  set)
         ;; Find potential class references in the code
         class-refs (find-class-references content class-name)]
-    
     ;; Return map of parsed elements
     {:package package
-     :class-name class-name 
+     :class-name class-name
      :imports imports
      :class-refs class-refs}))
 
@@ -118,39 +114,36 @@
   [parsed-files project-pkg]
   (let [;; Create map of simple class names to fully qualified names
         class-map (reduce (fn [acc {:keys [class]}]
-                           (assoc acc 
-                                  (last (string/split class #"\."))
-                                  class))
-                         {}
-                         parsed-files)
-        
+                            (assoc acc
+                                   (last (string/split class #"\."))
+                                   class))
+                    {}
+                    parsed-files)
         ;; Build forward dependency map
         deps-map (reduce (fn [acc {:keys [class imports class-refs package]}]
-                          ;; Filter out external dependencies and add to map
-                          (let [;; Process explicit imports
-                                filtered-imports (set (remove #(external-class? % project-pkg) imports))
-                                ;; Process class references, qualifying them with package if found in class-map
-                                package-deps (->> class-refs
+                           ;; Filter out external dependencies and add to map
+                           (let [;; Process explicit imports
+                                 filtered-imports (set (remove #(external-class? % project-pkg) imports))
+                                 ;; Process class references, qualifying them with package if found in class-map
+                                 package-deps (->> class-refs
                                                 (keep #(or (get class-map %)
                                                          (when package
                                                            (str package "." %))))
                                                 (remove #(external-class? % project-pkg))
                                                 set)]
-                            (assoc acc class (into filtered-imports package-deps))))
-                        {}  ; Start with empty map
-                        parsed-files)
-        
+                             (assoc acc class (into filtered-imports package-deps))))
+                   {}  ; Start with empty map
+                   parsed-files)
         ;; Build reverse dependency map
         reverse-deps (reduce (fn [acc [class deps]]
                              ;; For each dependency, add the current class as a reverse dep
-                             (reduce (fn [m dep]
-                                     ;; fnil provides empty set if key doesn't exist
-                                     (update m dep (fnil conj #{}) class))
-                                   acc
-                                   deps))
-                           {}  ; Start with empty map
-                           deps-map)]
-    
+                               (reduce (fn [m dep]
+                                       ;; fnil provides empty set if key doesn't exist
+                                         (update m dep (fnil conj #{}) class))
+                                 acc
+                                 deps))
+                       {}  ; Start with empty map
+                       deps-map)]
     ;; Return both dependency maps
     {:dependencies deps-map
      :reverse-dependencies reverse-deps}))
@@ -159,8 +152,8 @@
   "Format dependency data for output"
   [{:keys [dependencies reverse-dependencies]}]
   (string/join "\n"
-            (for [class (sort (keys dependencies))]
-              (str "Class: " class "\n"
-                   "  Dependencies: " (string/join ", " (sort (get dependencies class)))
-                   (when reverse-dependencies
-                     (str "\n  Used by: " (string/join ", " (sort (get reverse-dependencies class)))))))))
+    (for [class (sort (keys dependencies))]
+      (str "Class: " class "\n"
+           "  Dependencies: " (string/join ", " (sort (get dependencies class)))
+           (when reverse-dependencies
+             (str "\n  Used by: " (string/join ", " (sort (get reverse-dependencies class)))))))))
